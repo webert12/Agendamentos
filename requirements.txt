@@ -1,8 +1,8 @@
-Flask
-gunicorn
+streamlit
 sqlalchemy
 psycopg2-binary
 pandas
 plotly
 reportlab
 numpy
+gunicorn
