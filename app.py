@@ -1,18 +1,16 @@
 import os
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, time
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 from sqlalchemy import create_engine, text
-import urllib.parse
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA E FUSO HORÁRIO (BRASÍLIA) ---
-st.set_page_config(page_title="Agendamento Online - Fio & Caixa", page_icon="✂️", layout="centered")
+st.set_page_config(page_title="Agendamento Online", page_icon="✂️", layout="centered")
 
-# No Linux (Render), ZoneInfo precisa da biblioteca 'tzdata'
 try:
     TZ_BR = ZoneInfo("America/Sao_Paulo")
-except Exception as e:
+except Exception:
     st.error("❌ Erro no fuso horário. Adicione 'tzdata' ao seu arquivo requirements.txt")
     st.stop()
 
@@ -23,11 +21,10 @@ if not DB_URL:
     try:
         DB_URL = st.secrets["DB_URL"]
     except Exception:
-        st.error("❌ A variável DB_URL não foi configurada nas Environment Variables.")
+        st.error("❌ ERRO: A variável 'DB_URL' não foi encontrada nas Environment Variables nem nos Secrets.")
         st.stop()
 
-# CORREÇÃO CRÍTICA PARA O RENDER:
-# O Render fornece URLs com 'postgres://', mas o SQLAlchemy exige 'postgresql://'
+# Correção para o Render (SQLAlchemy exige postgresql://)
 if DB_URL and DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
 
@@ -35,15 +32,14 @@ if DB_URL and DB_URL.startswith("postgres://"):
 def init_connection(url):
     return create_engine(url, pool_pre_ping=True)
 
-# Inicializa o banco com tratamento de erro visível
 try:
     engine = init_connection(DB_URL)
 except Exception as e:
     st.error(f"❌ Erro ao conectar ao Banco de Dados: {e}")
     st.stop()
 
-# Funções auxiliares para executar consultas garantindo permissão de escrita
-def execute_write_query(query, params=None):
+# Executores de consulta com liberação de escrita no PostgreSQL do Render
+def execute_write(query, params=None):
     with engine.connect() as conn:
         conn = conn.execution_options(isolation_level="AUTOCOMMIT")
         conn.execute(text("SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE;"))
@@ -52,7 +48,7 @@ def execute_write_query(query, params=None):
         else:
             conn.execute(text(query))
 
-def execute_read_query(query, params=None):
+def execute_read(query, params=None):
     with engine.connect() as conn:
         if params:
             result = conn.execute(text(query), params)
@@ -60,191 +56,103 @@ def execute_read_query(query, params=None):
             result = conn.execute(text(query))
         return pd.DataFrame(result.fetchall(), columns=result.keys())
 
-# --- 3. INICIALIZAÇÃO DAS TABELAS ---
+# --- 3. CRIAR TABELA SE NÃO EXISTIR ---
 def init_db():
-    create_tables_sql = """
+    create_table_sql = """
     CREATE TABLE IF NOT EXISTS agendamentos (
         id SERIAL PRIMARY KEY,
-        estabelecimento VARCHAR(50) NOT NULL,
         cliente_nome VARCHAR(100) NOT NULL,
         cliente_telefone VARCHAR(20) NOT NULL,
         servico VARCHAR(100) NOT NULL,
-        valor NUMERIC(10, 2) NOT NULL,
         data_hora TIMESTAMP WITH TIME ZONE NOT NULL,
-        status VARCHAR(20) DEFAULT 'Agendado',
         criado_em TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS financeiro (
-        id SERIAL PRIMARY KEY,
-        estabelecimento VARCHAR(50) NOT NULL,
-        descricao VARCHAR(200) NOT NULL,
-        tipo VARCHAR(10) NOT NULL,
-        valor NUMERIC(10, 2) NOT NULL,
-        data DATE NOT NULL
     );
     """
     try:
-        execute_write_query(create_tables_sql)
+        execute_write(create_table_sql)
     except Exception as e:
-        st.warning(f"Aviso na inicialização do banco: {e}")
+        st.warning(f"Aviso na verificação do banco: {e}")
 
 init_db()
 
-# --- 4. INTERFACE DO USUÁRIO ---
-st.title("✂️ Fio & Caixa - Gestão e Agendamento")
+# --- 4. INTERFACE DO SISTEMA DE AGENDAMENTO ---
+st.title("✂️ Agendamento Online")
 
-# Configuração de Estabelecimento / Tenant
-query_params = st.query_params
-tenant_default = query_params.get("tenant", "Salao_Principal")
+aba_novo, aba_consultar = st.tabs(["📅 Novo Agendamento", "📋 Horários Agendados"])
 
-st.sidebar.header("🏢 Estabelecimento")
-estabelecimento = st.sidebar.text_input("Nome/Slug do Salão:", value=tenant_default)
-
-if not estabelecimento:
-    st.info("Por favor, defina um identificador para o estabelecimento na barra lateral.")
-    st.stop()
-
-aba1, aba2, aba3 = st.tabs(["📅 Novo Agendamento", "📋 Meus Agendamentos", "💰 Financeiro"])
-
-# ABA 1: NOVO AGENDAMENTO
-with aba1:
-    st.subheader("Agendar Cliente")
+# ABA DE CADASTRO DE AGENDAMENTO
+with aba_novo:
+    st.subheader("Marque seu Horário")
+    
     with st.form("form_agendamento", clear_on_submit=True):
-        nome = st.text_input("Nome do Cliente *")
+        nome = st.text_input("Nome Completo *")
         telefone = st.text_input("WhatsApp / Telefone *")
+        servico = st.selectbox("Serviço Desejado", ["Corte Masculino", "Corte Feminino", "Barba", "Sobrancelha", "Outro"])
         
-        col_serv, col_val = st.columns(2)
-        with col_serv:
-            servico = st.selectbox("Serviço", ["Corte Masculino", "Corte Feminino", "Barba", "Coloração", "Escova / Penteado", "Outro"])
-        with col_val:
-            valor = st.number_input("Valor (R$)", min_value=0.0, value=50.0, step=5.0)
-
         col_data, col_hora = st.columns(2)
         with col_data:
-            data_agendamento = st.date_input("Data", min_value=datetime.now(TZ_BR).date())
+            data = st.date_input("Data", min_value=datetime.now(TZ_BR).date())
         with col_hora:
-            hora_agendamento = st.time_input("Horário", value=time(9, 0))
+            hora = st.time_input("Horário", value=time(9, 0))
 
-        submitted = st.form_submit_button("Confirmar Agendamento", use_container_width=True)
+        btn_agendar = st.form_submit_button("Confirmar Agendamento", use_container_width=True)
 
-        if submitted:
-            if not nome or not telefone:
-                st.error("Preencha todos os campos obrigatórios (*).")
+        if btn_agendar:
+            if not nome.strip() or not telefone.strip():
+                st.error("Por favor, preencha o Nome e o Telefone.")
             else:
-                data_hora_dt = datetime.combine(data_agendamento, hora_agendamento).replace(tzinfo=TZ_BR)
-                
+                dt_completa = datetime.combine(data, hora).replace(tzinfo=TZ_BR)
                 insert_sql = """
-                INSERT INTO agendamentos (estabelecimento, cliente_nome, cliente_telefone, servico, valor, data_hora)
-                VALUES (:estabelecimento, :nome, :telefone, :servico, :valor, :data_hora);
+                INSERT INTO agendamentos (cliente_nome, cliente_telefone, servico, data_hora)
+                VALUES (:nome, :telefone, :servico, :data_hora);
                 """
                 try:
-                    execute_write_query(insert_sql, {
-                        "estabelecimento": estabelecimento,
+                    execute_write(insert_sql, {
                         "nome": nome,
                         "telefone": telefone,
                         "servico": servico,
-                        "valor": valor,
-                        "data_hora": data_hora_dt
+                        "data_hora": dt_completa
                     })
-                    st.success(f"✅ Agendamento de **{nome}** confirmado para {data_agendamento.strftime('%d/%m/%Y')} às {hora_agendamento.strftime('%H:%M')}!")
+                    st.success(f"✅ Agendamento de **{nome}** confirmado para {data.strftime('%d/%m/%Y')} às {hora.strftime('%H:%M')}!")
                 except Exception as e:
                     st.error(f"❌ Erro ao salvar agendamento: {e}")
 
-# ABA 2: VER AGENDAMENTOS
-with aba2:
-    st.subheader(f"Agendamentos - {estabelecimento}")
+# ABA DE CONSULTA E CANCELAMENTO
+with aba_consultar:
+    st.subheader("Consultar Agenda")
     
-    col_filtro, _ = st.columns([1, 1])
-    with col_filtro:
-        data_filtro = st.date_input("Filtrar Data", value=datetime.now(TZ_BR).date())
-
-    query_agenda = """
-    SELECT id AS "ID", cliente_nome AS "Cliente", cliente_telefone AS "Telefone", 
-           servico AS "Serviço", valor AS "Valor (R$)", 
-           to_char(data_hora, 'HH24:MI') AS "Horário", status AS "Status"
-    FROM agendamentos 
-    WHERE estabelecimento = :estabelecimento AND DATE(data_hora AT TIME ZONE 'America/Sao_Paulo') = :data_filtro
+    data_filtro = st.date_input("Filtrar por Data", value=datetime.now(TZ_BR).date())
+    
+    query_busca = """
+    SELECT 
+        id AS "ID", 
+        cliente_nome AS "Cliente", 
+        cliente_telefone AS "Telefone", 
+        servico AS "Serviço", 
+        to_char(data_hora AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI') AS "Horário"
+    FROM agendamentos
+    WHERE DATE(data_hora AT TIME ZONE 'America/Sao_Paulo') = :data_filtro
     ORDER BY data_hora ASC;
     """
     
     try:
-        df_agendamentos = execute_read_query(query_agenda, {
-            "estabelecimento": estabelecimento,
-            "data_filtro": data_filtro
-        })
+        df = execute_read(query_busca, {"data_filtro": data_filtro})
         
-        if not df_agendamentos.empty:
-            st.dataframe(df_agendamentos, use_container_width=True, hide_index=True)
+        if not df.empty:
+            st.dataframe(df, use_container_width=True, hide_index=True)
             
             st.divider()
-            with st.expander("Remover Agendamento"):
-                id_cancelar = st.number_input("Digite o ID do agendamento para excluir", min_value=1, step=1)
-                if st.button("Excluir Agendamento", type="secondary"):
-                    delete_sql = "DELETE FROM agendamentos WHERE id = :id AND estabelecimento = :estabelecimento;"
-                    execute_write_query(delete_sql, {"id": id_cancelar, "estabelecimento": estabelecimento})
-                    st.success("Agendamento excluído!")
+            col_id, col_btn = st.columns([2, 1])
+            with col_id:
+                id_deletar = st.number_input("ID do agendamento para cancelar", min_value=1, step=1)
+            with col_btn:
+                st.write("")
+                st.write("")
+                if st.button("Cancelar Horário", type="secondary"):
+                    execute_write("DELETE FROM agendamentos WHERE id = :id;", {"id": id_deletar})
+                    st.success("Agendamento cancelado com sucesso!")
                     st.rerun()
         else:
             st.info("Nenhum agendamento encontrado para a data selecionada.")
     except Exception as e:
         st.error(f"Erro ao buscar agendamentos: {e}")
-
-# ABA 3: FINANCEIRO
-with aba3:
-    st.subheader("Caixa & Lançamentos")
-    
-    with st.form("form_financeiro", clear_on_submit=True):
-        col_desc, col_tipo, col_v = st.columns([2, 1, 1])
-        with col_desc:
-            desc = st.text_input("Descrição")
-        with col_tipo:
-            tipo = st.selectbox("Tipo", ["Receita", "Despesa"])
-        with col_v:
-            val_fin = st.number_input("Valor (R$)", min_value=0.01, step=10.0)
-        
-        data_fin = st.date_input("Data do Lançamento", value=datetime.now(TZ_BR).date())
-        sub_fin = st.form_submit_button("Lançar", use_container_width=True)
-
-        if sub_fin:
-            if not desc:
-                st.error("Preencha a descrição do lançamento.")
-            else:
-                sql_fin = """
-                INSERT INTO financeiro (estabelecimento, descricao, tipo, valor, data)
-                VALUES (:estabelecimento, :desc, :tipo, :valor, :data);
-                """
-                try:
-                    execute_write_query(sql_fin, {
-                        "estabelecimento": estabelecimento,
-                        "desc": desc,
-                        "tipo": tipo,
-                        "valor": val_fin,
-                        "data": data_fin
-                    })
-                    st.success("Lançamento registrado com sucesso!")
-                except Exception as e:
-                    st.error(f"Erro ao registrar lançamento: {e}")
-
-    st.divider()
-    
-    try:
-        sql_resumo = """
-        SELECT tipo, SUM(valor) as total 
-        FROM financeiro 
-        WHERE estabelecimento = :estabelecimento 
-        GROUP BY tipo;
-        """
-        df_resumo = execute_read_query(sql_resumo, {"estabelecimento": estabelecimento})
-        
-        receitas = float(df_resumo[df_resumo['tipo'] == 'Receita']['total'].sum()) if not df_resumo.empty and 'Receita' in df_resumo['tipo'].values else 0.0
-        despesas = float(df_resumo[df_resumo['tipo'] == 'Despesa']['total'].sum()) if not df_resumo.empty and 'Despesa' in df_resumo['tipo'].values else 0.0
-        saldo = receitas - despesas
-
-        col_m1, col_m2, col_m3 = st.columns(3)
-        col_m1.metric("Receitas", f"R$ {receitas:.2f}")
-        col_m2.metric("Despesas", f"R$ {despesas:.2f}")
-        col_m3.metric("Saldo Líquido", f"R$ {saldo:.2f}", delta=f"{saldo:.2f}")
-        
-    except Exception as e:
-        st.error(f"Erro ao calcular balanço financeiro: {e}")
