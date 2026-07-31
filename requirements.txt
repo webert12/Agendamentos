@@ -1,9 +1,5 @@
-streamlit
-sqlalchemy
-psycopg2-binary
-pandas
-plotly
-reportlab
-numpy
-gunicorn
-tzdata
+streamlit==1.32.0
+pandas==2.2.1
+SQLAlchemy==2.0.28
+psycopg2-binary==2.9.9
+tzdata==2024.1
