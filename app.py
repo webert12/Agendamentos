@@ -1,1179 +1,217 @@
-import os
 import streamlit as st
 import pandas as pd
-from datetime import datetime, time
+from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.exc import SQLAlchemyError
 import urllib.parse
 
+# --- 1. CONFIGURAÇÃO DA PÁGINA E FUSO HORÁRIO (BRASÍLIA) ---
+st.set_page_config(page_title="Agendamento Online", page_icon="✂️", layout="centered")
+TZ_BR = ZoneInfo("America/Sao_Paulo")
 
-# =====================================================
-# CONFIGURAÇÃO DA PÁGINA
-# =====================================================
-
-st.set_page_config(
-    page_title="Agendamento Online",
-    page_icon="✂️",
-    layout="centered"
-)
-
-
-# =====================================================
-# FUSO HORÁRIO
-# =====================================================
-
-try:
-
-    TZ_BR = ZoneInfo("America/Sao_Paulo")
-
-except Exception:
-
-    st.error(
-        "❌ Erro ao carregar o fuso horário.\n\n"
-        "Adicione 'tzdata' ao requirements.txt"
-    )
-
+# --- 2. CONEXÃO COM O BANCO DE DADOS POSTGRESQL ---
+if "DB_URL" in st.secrets:
+    DB_URL = st.secrets["DB_URL"]
+else:
+    st.error("❌ ERRO: A variável 'DB_URL' não foi encontrada nos Secrets do Streamlit Cloud.")
     st.stop()
-
-
-
-# =====================================================
-# CONEXÃO COM BANCO SUPABASE
-# =====================================================
-
-
-def carregar_database_url():
-
-    """
-    Prioridade:
-
-    1 - Variável de ambiente (Render)
-    2 - Streamlit Secrets
-    """
-
-    db_url = None
-
-
-    # Render / Ambiente
-    if os.getenv("DB_URL"):
-
-        db_url = os.getenv("DB_URL")
-
-
-    # Streamlit Secrets
-    elif "DB_URL" in st.secrets:
-
-        db_url = st.secrets["DB_URL"]
-
-
-    return db_url
-
-
-
-DB_URL = carregar_database_url()
-
-
-
-if not DB_URL:
-
-
-    st.error(
-        """
-❌ DB_URL não encontrada.
-
-Configure no Render:
-
-Environment Variables
-
-DB_URL=
-sua_string_do_supabase
-"""
-    )
-
-    st.stop()
-
-
-
-# =====================================================
-# CORREÇÕES DA STRING DE CONEXÃO
-# =====================================================
-
-
-# Render às vezes retorna postgres://
-
-if DB_URL.startswith("postgres://"):
-
-    DB_URL = DB_URL.replace(
-        "postgres://",
-        "postgresql://",
-        1
-    )
-
-
-
-# Corrige caracteres especiais na senha
-# somente se necessário
-
-try:
-
-    url_temp = make_url(DB_URL)
-
-
-    if url_temp.password:
-
-        senha_original = url_temp.password
-
-
-        senha_codificada = urllib.parse.quote_plus(
-            senha_original
-        )
-
-
-        if senha_original != senha_codificada:
-
-            DB_URL = DB_URL.replace(
-                senha_original,
-                senha_codificada
-            )
-
-
-except Exception:
-
-    pass
-
-
-
-
-# =====================================================
-# DIAGNÓSTICO DA CONEXÃO
-# =====================================================
-
-
-try:
-
-    url = make_url(DB_URL)
-
-
-    with st.expander(
-        "🔎 Diagnóstico da conexão"
-    ):
-
-
-        st.write(
-            "Usuário:",
-            url.username
-        )
-
-
-        st.write(
-            "Host:",
-            url.host
-        )
-
-
-        st.write(
-            "Porta:",
-            url.port
-        )
-
-
-        st.write(
-            "Banco:",
-            url.database
-        )
-
-
-        st.write(
-            "Senha configurada:",
-            "SIM" if url.password else "NÃO"
-        )
-
-
-except Exception as erro:
-
-
-    st.warning(
-        f"Não foi possível analisar a URL: {erro}"
-    )
-
-
-
-
-# =====================================================
-# CRIAÇÃO DO ENGINE
-# =====================================================
-
 
 @st.cache_resource
 def init_connection(url):
-
-
-    return create_engine(
-
-        url,
-
-
-        # evita conexões quebradas
-
-        pool_pre_ping=True,
-
-
-        # recicla conexões antigas
-
-        pool_recycle=180,
-
-
-        # recomendado para Supabase Pooler
-
-        pool_size=3,
-
-
-        max_overflow=5,
-
-
-        connect_args={
-
-            "sslmode": "require",
-
-            "connect_timeout": 10
-
-        }
-
-    )
-
-
-
+    return create_engine(url, pool_pre_ping=True)
 
 try:
-
-
     engine = init_connection(DB_URL)
-
-
-
-    # teste real da conexão
-
-    with engine.connect() as conn:
-
-
-        conn.execute(
-            text("SELECT 1")
-        )
-
-
-
-except Exception as erro:
-
-
-    st.error(
-        f"""
-❌ Falha ao conectar no banco.
-
-Verifique:
-
-1) Senha do banco Supabase
-2) DB_URL no Render
-3) Projeto Supabase correto
-4) Região do Pooler
-
-Erro técnico:
-
-{erro}
-"""
-    )
-
-
+except Exception as e:
+    st.error(f"Erro ao conectar ao banco de dados: {e}")
     st.stop()
-# =====================================================
-# FUNÇÃO DE ESCRITA NO BANCO
-# =====================================================
 
-
-def execute_write(query, params=None):
-
+# --- CORREÇÃO AUTOMÁTICA DE ESTRUTURA DO BANCO ---
+def ajustar_estrutura_banco():
     try:
-
         with engine.begin() as conn:
-
-            conn.execute(
-                text(query),
-                params or {}
-            )
-
-
-        return True
-
-
-
-    except SQLAlchemyError as erro:
-
-
-        st.error(
-            f"""
-❌ Erro ao salvar no banco:
-
-{erro}
-"""
-        )
-
-
-        return False
-
-
-
-
-
-# =====================================================
-# FUNÇÃO DE LEITURA DO BANCO
-# =====================================================
-
-
-def execute_read(query, params=None):
-
-
-    try:
-
-
-        with engine.connect() as conn:
-
-
-            resultado = conn.execute(
-
-                text(query),
-
-                params or {}
-
-            )
-
-
-            dados = resultado.fetchall()
-
-
-            colunas = resultado.keys()
-
-
-
-            return pd.DataFrame(
-
-                dados,
-
-                columns=colunas
-
-            )
-
-
-
-    except SQLAlchemyError as erro:
-
-
-        st.error(
-
-            f"""
-❌ Erro ao consultar banco:
-
-{erro}
-"""
-
-        )
-
-
-        return pd.DataFrame()
-
-
-
-
-
-# =====================================================
-# TESTE DE SAÚDE DO BANCO
-# =====================================================
-
-
-def verificar_banco():
-
-
-    try:
-
-
-        resultado = execute_read(
-            "SELECT NOW();"
-        )
-
-
-        if not resultado.empty:
-
-            return True
-
-
-
+            conn.execute(text("ALTER TABLE agendamentos ALTER COLUMN cliente_telefone DROP NOT NULL;"))
     except Exception:
-
         pass
 
+ajustar_estrutura_banco()
 
+# --- 3. HORÁRIOS PADRÃO DE ATENDIMENTO ---
+HORARIOS_DISPONIVEIS = [
+    "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", 
+    "11:00", "11:30", "13:00", "13:30", "14:00", "14:30", 
+    "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", 
+    "18:00", "18:30", "19:00"
+]
 
-    return False
+# --- 4. FUNÇÕES DE BANCO DE DADOS ---
+def carregar_servicos_salao(salao_id):
+    salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT nome, preco FROM servicos WHERE usuario_id = :user ORDER BY nome ASC"), 
+                {"user": salao_clean}
+            )
+            rows = result.fetchall()
+            if rows:
+                return {row[0]: float(row[1]) for row in rows}
+    except Exception:
+        pass
+    return {"Corte de Cabelo": 25.00, "Barba": 25.00, "Combo (Corte + Barba)": 50.00}
 
+def buscar_horarios_ocupados(salao_id, data_str):
+    salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT hora FROM agendamentos WHERE usuario_id = :user AND data = :dt"), 
+                {"user": salao_clean, "dt": data_str}
+            )
+            ocupados = []
+            for row in result.fetchall():
+                val = str(row[0]).strip()
+                if len(val) >= 5 and ":" in val:
+                    ocupados.append(val[:5])
+                else:
+                    ocupados.append(val)
+            return ocupados
+    except Exception:
+        return []
 
+def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, data_str, hora):
+    salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
+    contato_clean = cliente_contato.strip()
+    nome_clean = cliente_nome.strip()
 
+    with engine.begin() as conn:
+        try:
+            conn.execute(
+                text("""
+                    INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, cliente_telefone, servico_nome, data, hora)
+                    VALUES (:user, :nome, :contato, :contato, :servico, :data, :hora)
+                """),
+                {
+                    "user": salao_clean,
+                    "nome": nome_clean,
+                    "contato": contato_clean,
+                    "servico": servico_nome,
+                    "data": data_str,
+                    "hora": hora
+                }
+            )
+        except Exception:
+            conn.execute(
+                text("""
+                    INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
+                    VALUES (:user, :nome, :contato, :servico, :data, :hora)
+                """),
+                {
+                    "user": salao_clean,
+                    "nome": nome_clean,
+                    "contato": contato_clean,
+                    "servico": servico_nome,
+                    "data": data_str,
+                    "hora": hora
+                }
+            )
 
+# --- 5. PARÂMETROS DA URL E IDENTIFICAÇÃO DO SALÃO ---
+query_params = st.query_params
+salao_param = query_params.get("salao", "padrao")
+salao_id_clean = urllib.parse.unquote(str(salao_param)).strip().lower()
+nome_salao_formatado = salao_id_clean.replace('_', ' ').replace('-', ' ').title()
 
-# =====================================================
-# CRIAÇÃO DAS TABELAS
-# =====================================================
-
-
-def init_db():
-
-
-    sql = """
-
-
-    CREATE TABLE IF NOT EXISTS agendamentos (
-
-        id SERIAL PRIMARY KEY,
-
-
-        cliente_nome VARCHAR(100)
-        NOT NULL,
-
-
-        cliente_telefone VARCHAR(20)
-        NOT NULL,
-
-
-        servico VARCHAR(100)
-        NOT NULL,
-
-
-        data_hora TIMESTAMPTZ
-        NOT NULL,
-
-
-        criado_em TIMESTAMPTZ
-        DEFAULT CURRENT_TIMESTAMP
-
-    );
-
-
-    """
-
-
-    execute_write(sql)
-
-
-
-
-
-# Inicializa banco
-
-init_db()
-# =====================================================
-# INTERFACE
-# =====================================================
-
-
+# --- 6. INTERFACE DE AGENDAMENTO DO CLIENTE ---
 st.title("✂️ Agendamento Online")
-
-
-
-aba_novo, aba_consultar = st.tabs(
-
-    [
-
-        "📅 Novo Agendamento",
-
-        "📋 Horários Agendados"
-
-    ]
-
-)
-
-
-
-
-# =====================================================
-# NOVO AGENDAMENTO
-# =====================================================
-
-
-with aba_novo:
-
-
-    st.subheader(
-        "Marque seu Horário"
-    )
-
-
-
-    with st.form(
-
-        "form_agendamento",
-
-        clear_on_submit=True
-
-    ):
-
-
-
-        nome = st.text_input(
-
-            "Nome Completo *"
-
-        )
-
-
-
-        telefone = st.text_input(
-
-            "WhatsApp / Telefone *"
-
-        )
-
-
-
-        servico = st.selectbox(
-
-            "Serviço",
-
-            [
-
-                "Corte Masculino",
-
-                "Corte Feminino",
-
-                "Barba",
-
-                "Sobrancelha",
-
-                "Outro"
-
-            ]
-
-        )
-
-
-
-        col1, col2 = st.columns(2)
-
-
-
-        with col1:
-
-
-            data = st.date_input(
-
-                "Data",
-
-                min_value=datetime.now(
-                    TZ_BR
-                ).date()
-
-            )
-
-
-
-        with col2:
-
-
-            hora = st.time_input(
-
-                "Horário",
-
-                value=time(9,0)
-
-            )
-
-
-
-
-        enviar = st.form_submit_button(
-
-            "Confirmar Agendamento",
-
-            use_container_width=True
-
-        )
-
-
-
-
-
-        if enviar:
-
-
-
-            nome = nome.strip()
-
-            telefone = telefone.strip()
-
-
-
-            if not nome:
-
-
-                st.warning(
-                    "Informe seu nome."
-                )
-
-
-                st.stop()
-
-
-
-            if not telefone:
-
-
-                st.warning(
-                    "Informe seu telefone."
-                )
-
-
-                st.stop()
-
-
-
-
-
-            # remove caracteres extras
-
-            telefone_limpo = (
-
-                telefone
-
-                .replace(
-                    "(",
-                    ""
-                )
-
-                .replace(
-                    ")",
-                    ""
-                )
-
-                .replace(
-                    "-",
-                    ""
-                )
-
-                .replace(
-                    " ",
-                    ""
-                )
-
-            )
-
-
-
-
-
-            data_hora = datetime.combine(
-
-                data,
-
-                hora
-
-            ).replace(
-
-                tzinfo=TZ_BR
-
-            )
-
-
-
-
-
-            # =====================================================
-            # VERIFICA HORÁRIO EXISTENTE
-            # =====================================================
-
-
-
-            verifica_sql = """
-
-            SELECT COUNT(*) AS total
-
-            FROM agendamentos
-
-            WHERE data_hora = :data_hora;
-
-            """
-
-
-
-            resultado = execute_read(
-
-                verifica_sql,
-
-                {
-
-                    "data_hora": data_hora
-
-                }
-
-            )
-
-
-
-
-
-            if not resultado.empty:
-
-
-
-                quantidade = resultado.iloc[0]["total"]
-
-
-
-                if quantidade > 0:
-
-
-
-                    st.error(
-
-                        "❌ Este horário já está reservado."
-
-                    )
-
-
-                    st.stop()
-
-
-
-
-
-
-
-            # =====================================================
-            # INSERÇÃO
-            # =====================================================
-
-
-
-            insert_sql = """
-
-            INSERT INTO agendamentos
-
-            (
-
-                cliente_nome,
-
-                cliente_telefone,
-
-                servico,
-
-                data_hora
-
-            )
-
-
-            VALUES
-
-            (
-
-                :nome,
-
-                :telefone,
-
-                :servico,
-
-                :data_hora
-
-            );
-
-            """
-
-
-
-
-            salvo = execute_write(
-
-
-                insert_sql,
-
-
-                {
-
-
-                    "nome": nome,
-
-
-                    "telefone": telefone_limpo,
-
-
-                    "servico": servico,
-
-
-                    "data_hora": data_hora
-
-
-                }
-
-
-            )
-
-
-
-
-
-
-            if salvo:
-
-
-
-                st.success(
-
-                    f"""
-
-✅ Agendamento confirmado!
-
-
-👤 Cliente: {nome}
-
-
-📅 Data:
-{data.strftime('%d/%m/%Y')}
-
-
-🕒 Horário:
-{hora.strftime('%H:%M')}
-
-
-✂️ Serviço:
-{servico}
-
-"""
-
-                )
-
-
-
-                st.rerun()
-# =====================================================
-# CONSULTA E CANCELAMENTO
-# =====================================================
-
-
-with aba_consultar:
-
-
-    st.subheader(
-        "📋 Consultar Agenda"
-    )
-
-
-
-    data_filtro = st.date_input(
-
-        "Filtrar por Data",
-
-        value=datetime.now(
-            TZ_BR
-        ).date(),
-
-        key="data_filtro"
-
-    )
-
-
-
-
-    query = """
-
-    SELECT
-
-        id,
-
-        cliente_nome,
-
-        cliente_telefone,
-
-        servico,
-
-        data_hora
-
-
-    FROM agendamentos
-
-
-    WHERE DATE(
-
-        data_hora AT TIME ZONE 'America/Sao_Paulo'
-
-    ) = :data
-
-
-    ORDER BY data_hora;
-
-
-    """
-
-
-
-
-
-    df = execute_read(
-
-        query,
-
-        {
-
-            "data": data_filtro
-
-        }
-
-    )
-
-
-
-
-
-
-    if not df.empty:
-
-
-
-        # garante conversão correta
-
-        df["data_hora"] = pd.to_datetime(
-
-            df["data_hora"],
-
-            utc=True
-
-        ).dt.tz_convert(
-
-            "America/Sao_Paulo"
-
-        )
-
-
-
-        df["Horário"] = df["data_hora"].dt.strftime(
-
-            "%H:%M"
-
-        )
-
-
-
-
-        df = df.rename(
-
-            columns={
-
-
-                "id":
-
-                "ID",
-
-
-
-                "cliente_nome":
-
-                "Cliente",
-
-
-
-                "cliente_telefone":
-
-                "Telefone",
-
-
-
-                "servico":
-
-                "Serviço"
-
-            }
-
-        )
-
-
-
-
-
-        st.dataframe(
-
-            df[
-
-                [
-
-                    "ID",
-
-                    "Cliente",
-
-                    "Telefone",
-
-                    "Serviço",
-
-                    "Horário"
-
-                ]
-
-            ],
-
-
-            hide_index=True,
-
-
-            use_container_width=True
-
-        )
-
-
-
-
-
-
-        st.divider()
-
-
-
-        st.subheader(
-
-            "❌ Cancelar Agendamento"
-
-        )
-
-
-
-
-
-
-        id_cancelar = st.number_input(
-
-            "Digite o ID do agendamento",
-
-            min_value=1,
-
-            step=1
-
-        )
-
-
-
-
-
-
-
-        if st.button(
-
-            "Cancelar Agendamento",
-
-            use_container_width=True
-
-        ):
-
-
-
-            verificar = execute_read(
-
-                """
-
-                SELECT id
-
-                FROM agendamentos
-
-                WHERE id=:id;
-
-                """,
-
-
-                {
-
-                    "id": id_cancelar
-
-                }
-
-            )
-
-
-
-
-
-            if verificar.empty:
-
-
-
-                st.warning(
-
-                    "❌ Esse ID não existe."
-
-                )
-
-
-
-            else:
-
-
-
-                apagou = execute_write(
-
-                    """
-
-                    DELETE FROM agendamentos
-
-                    WHERE id=:id;
-
-                    """,
-
-
-                    {
-
-                        "id": id_cancelar
-
-                    }
-
-                )
-
-
-
-
-
-                if apagou:
-
-
-
-                    st.success(
-
-                        "✅ Agendamento cancelado."
-
-                    )
-
-
-                    st.rerun()
-
-
-
-
-
+st.write(f"Seja bem-vindo ao sistema de agendamento de **{nome_salao_formatado}**.")
+
+servicos_disponiveis = carregar_servicos_salao(salao_id_clean)
+
+# Obter data e hora atual no fuso de Brasília
+agora_br = datetime.now(TZ_BR)
+hoje_str = agora_br.strftime("%Y-%m-%d")
+hora_atual_str = agora_br.strftime("%H:%M")
+
+# --- SELEÇÃO DE DATA FORA DO FORMULÁRIO PARA ATUALIZAÇÃO INSTANTÂNEA ---
+data_escolhida = st.date_input("Escolha o Dia do Agendamento:", min_value=agora_br.date())
+data_str = data_escolhida.strftime("%Y-%m-%d")
+
+# Consulta no banco de dados para a data recém-selecionada
+ocupados = buscar_horarios_ocupados(salao_id_clean, data_str)
+
+# Monta a lista dinâmica de opções imediatamente
+opcoes_horario = ["-- Selecione o Horário --"]
+for h in HORARIOS_DISPONIVEIS:
+    eh_passado = (data_str == hoje_str) and (h <= hora_atual_str)
+    eh_reservado = h in ocupados
+
+    if eh_passado:
+        opcoes_horario.append(f"🔴 {h} - (HORÁRIO JÁ PASSOU)")
+    elif eh_reservado:
+        opcoes_horario.append(f"🔴 {h} - (RESERVADO)")
     else:
+        opcoes_horario.append(f"🟢 {h} - (DISPONÍVEL)")
 
-
-
-        st.info(
-
-            "Nenhum agendamento encontrado para esta data."
-
+# --- FORMULÁRIO DE DADOS DO CLIENTE ---
+with st.form("form_agendamento_cliente", clear_on_submit=True):
+    nome_cliente = st.text_input("Seu Nome Completo:")
+    telefone_cliente = st.text_input("Seu WhatsApp (com DDD):")
+    
+    if servicos_disponiveis:
+        servico_escolhido = st.selectbox(
+            "Escolha o Serviço Desejado:", 
+            options=list(servicos_disponiveis.keys()),
+            format_func=lambda x: f"{x} - R$ {servicos_disponiveis[x]:.2f}"
         )
+    else:
+        st.warning("Nenhum serviço disponível no momento.")
+        servico_escolhido = None
 
+    horario_selecionado = st.selectbox(
+        "Escolha o Horário Desejado:", 
+        options=opcoes_horario
+    )
 
+    enviar = st.form_submit_button("Confirmar Agendamento 🚀", use_container_width=True)
 
-
-
-# =====================================================
-# RODAPÉ
-# =====================================================
-
-
-st.divider()
-
-
-
-st.caption(
-
-    "✂️ Sistema de Agendamento • Versão Profissional"
-
-)
+# --- 7. PROCESSAMENTO E VALIDAÇÃO DO FORMULÁRIO ---
+if enviar:
+    if not nome_cliente or not telefone_cliente:
+        st.warning("⚠️ Por favor, preencha seu nome e WhatsApp.")
+    elif not servico_escolhido:
+        st.error("⚠️ Selecione um serviço válido.")
+    elif horario_selecionado == "-- Selecione o Horário --":
+        st.warning("⚠️ Por favor, escolha um horário na lista acima.")
+    elif "🔴" in horario_selecionado:
+        hora_ext = horario_selecionado.split()[1]
+        if "HORÁRIO JÁ PASSOU" in horario_selecionado:
+            st.error(f"❌ O horário **{hora_ext}** já passou para a data selecionada. Escolha um horário futuro.")
+        else:
+            st.error(f"❌ O horário **{hora_ext}** já possui uma reserva confirmada para esta data. Escolha um horário verde (🟢).")
+    else:
+        hora_limpa = horario_selecionado.split()[1]
+        
+        # Checagem em tempo real antes de salvar
+        ocupados_agora = buscar_horarios_ocupados(salao_id_clean, data_str)
+        if hora_limpa in ocupados_agora:
+            st.error(f"❌ O horário **{hora_limpa}** acabou de ser reservado nesta data por outro cliente. Escolha outro horário.")
+        else:
+            try:
+                salvar_agendamento(
+                    salao_id=salao_id_clean,
+                    cliente_nome=nome_cliente,
+                    cliente_contato=telefone_cliente,
+                    servico_nome=servico_escolhido,
+                    data_str=data_str,
+                    hora=hora_limpa
+                )
+                
+                st.success(f"🎉 Agendamento confirmado com sucesso, {nome_cliente}!")
+                st.balloons()
+                st.info(
+                    f"📅 **Data:** {data_escolhida.strftime('%d/%m/%Y')} às **{hora_limpa}**\n\n"
+                    f"✂️ **Serviço:** {servico_escolhido}"
+                )
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao salvar o agendamento: {e}")
