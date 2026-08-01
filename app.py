@@ -39,26 +39,33 @@ except Exception as e:
 
 # --- CORREÇÃO AUTOMÁTICA DE ESTRUTURA DO BANCO ---
 def ajustar_estrutura_banco():
-    # 1. Tenta remover a obrigatoriedade da coluna cliente_telefone
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE agendamentos ALTER COLUMN cliente_telefone DROP NOT NULL;"))
-    except Exception:
-        pass
+    # 1. Lista de colunas que precisam existir (tenta adicionar se faltarem)
+    comandos_adicionar = [
+        "ALTER TABLE agendamentos ADD COLUMN usuario_id VARCHAR(100) DEFAULT 'padrao';",
+        "ALTER TABLE servicos ADD COLUMN usuario_id VARCHAR(100) DEFAULT 'padrao';",
+        "ALTER TABLE agendamentos ADD COLUMN cliente_contato VARCHAR(100);",
+        "ALTER TABLE agendamentos ADD COLUMN cliente_telefone VARCHAR(100);"
+    ]
+    
+    for comando in comandos_adicionar:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(comando))
+        except Exception:
+            pass # Se der erro, é porque a coluna já existe, então ignoramos
 
-    # 2. Tenta adicionar a coluna usuario_id na tabela agendamentos caso não exista
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE agendamentos ADD COLUMN usuario_id VARCHAR(100) DEFAULT 'padrao';"))
-    except Exception:
-        pass
-
-    # 3. Tenta adicionar a coluna usuario_id na tabela servicos caso não exista
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE servicos ADD COLUMN usuario_id VARCHAR(100) DEFAULT 'padrao';"))
-    except Exception:
-        pass
+    # 2. Garante que as colunas de contato não sejam obrigatórias (NOT NULL)
+    comandos_remover_restricao = [
+        "ALTER TABLE agendamentos ALTER COLUMN cliente_telefone DROP NOT NULL;",
+        "ALTER TABLE agendamentos ALTER COLUMN cliente_contato DROP NOT NULL;"
+    ]
+    
+    for comando in comandos_remover_restricao:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(comando))
+        except Exception:
+            pass
 
 ajustar_estrutura_banco()
 
@@ -110,7 +117,7 @@ def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, da
     contato_clean = cliente_contato.strip()
     nome_clean = cliente_nome.strip()
 
-    # TENTATIVA 1: Tenta inserir considerando que a coluna cliente_telefone EXISTE
+    # TENTATIVA 1: Tenta inserir preenchendo as DUAS colunas (cliente_contato e cliente_telefone)
     try:
         with engine.begin() as conn:
             conn.execute(
@@ -128,22 +135,40 @@ def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, da
                 }
             )
     except Exception:
-        # TENTATIVA 2: Se falhar (ex: coluna não existe), abre uma NOVA transação limpa
-        with engine.begin() as conn_fallback:
-            conn_fallback.execute(
-                text("""
-                    INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
-                    VALUES (:user, :nome, :contato, :servico, :data, :hora)
-                """),
-                {
-                    "user": salao_clean,
-                    "nome": nome_clean,
-                    "contato": contato_clean,
-                    "servico": servico_nome,
-                    "data": data_str,
-                    "hora": hora
-                }
-            )
+        # TENTATIVA 2: Se falhar, tenta usar APENAS a coluna cliente_telefone
+        try:
+            with engine.begin() as conn_fallback_1:
+                conn_fallback_1.execute(
+                    text("""
+                        INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_telefone, servico_nome, data, hora)
+                        VALUES (:user, :nome, :contato, :servico, :data, :hora)
+                    """),
+                    {
+                        "user": salao_clean,
+                        "nome": nome_clean,
+                        "contato": contato_clean,
+                        "servico": servico_nome,
+                        "data": data_str,
+                        "hora": hora
+                    }
+                )
+        except Exception:
+            # TENTATIVA 3: Se falhar, tenta usar APENAS a coluna cliente_contato
+            with engine.begin() as conn_fallback_2:
+                conn_fallback_2.execute(
+                    text("""
+                        INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
+                        VALUES (:user, :nome, :contato, :servico, :data, :hora)
+                    """),
+                    {
+                        "user": salao_clean,
+                        "nome": nome_clean,
+                        "contato": contato_clean,
+                        "servico": servico_nome,
+                        "data": data_str,
+                        "hora": hora
+                    }
+                )
 
 # --- 5. PARÂMETROS DA URL E IDENTIFICAÇÃO DO SALÃO ---
 query_params = st.query_params
