@@ -39,9 +39,24 @@ except Exception as e:
 
 # --- CORREÇÃO AUTOMÁTICA DE ESTRUTURA DO BANCO ---
 def ajustar_estrutura_banco():
+    # 1. Tenta remover a obrigatoriedade da coluna cliente_telefone
     try:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE agendamentos ALTER COLUMN cliente_telefone DROP NOT NULL;"))
+    except Exception:
+        pass
+
+    # 2. Tenta adicionar a coluna usuario_id na tabela agendamentos caso não exista
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE agendamentos ADD COLUMN usuario_id VARCHAR(100) DEFAULT 'padrao';"))
+    except Exception:
+        pass
+
+    # 3. Tenta adicionar a coluna usuario_id na tabela servicos caso não exista
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE servicos ADD COLUMN usuario_id VARCHAR(100) DEFAULT 'padrao';"))
     except Exception:
         pass
 
