@@ -4,7 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy import create_engine, text
 import urllib.parse
-import os  # Adicionado para ler variáveis de ambiente no Render
+import os
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA E FUSO HORÁRIO (BRASÍLIA) ---
 st.set_page_config(page_title="Agendamento Online", page_icon="✂️", layout="centered")
@@ -95,8 +95,9 @@ def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, da
     contato_clean = cliente_contato.strip()
     nome_clean = cliente_nome.strip()
 
-    with engine.begin() as conn:
-        try:
+    # TENTATIVA 1: Tenta inserir considerando que a coluna cliente_telefone EXISTE
+    try:
+        with engine.begin() as conn:
             conn.execute(
                 text("""
                     INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, cliente_telefone, servico_nome, data, hora)
@@ -111,8 +112,10 @@ def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, da
                     "hora": hora
                 }
             )
-        except Exception:
-            conn.execute(
+    except Exception:
+        # TENTATIVA 2: Se falhar (ex: coluna não existe), abre uma NOVA transação limpa
+        with engine.begin() as conn_fallback:
+            conn_fallback.execute(
                 text("""
                     INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
                     VALUES (:user, :nome, :contato, :servico, :data, :hora)
