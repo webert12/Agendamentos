@@ -4,16 +4,27 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy import create_engine, text
 import urllib.parse
+import os  # Adicionado para ler variáveis de ambiente no Render
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA E FUSO HORÁRIO (BRASÍLIA) ---
 st.set_page_config(page_title="Agendamento Online", page_icon="✂️", layout="centered")
 TZ_BR = ZoneInfo("America/Sao_Paulo")
 
 # --- 2. CONEXÃO COM O BANCO DE DADOS POSTGRESQL ---
-if "DB_URL" in st.secrets:
-    DB_URL = st.secrets["DB_URL"]
-else:
-    st.error("❌ ERRO: A variável 'DB_URL' não foi encontrada nos Secrets do Streamlit Cloud.")
+# Tenta carregar a URL do banco das variáveis de ambiente (padrão no Render)
+DB_URL = os.environ.get("DB_URL")
+
+# Se não estiver nas variáveis de ambiente, tenta no st.secrets (padrão no Streamlit Cloud)
+if not DB_URL:
+    try:
+        if "DB_URL" in st.secrets:
+            DB_URL = st.secrets["DB_URL"]
+    except FileNotFoundError:
+        pass # Ignora o erro caso o arquivo secrets.toml não exista
+
+# Se ainda assim não encontrar, exibe o erro e para a execução
+if not DB_URL:
+    st.error("❌ ERRO: A variável 'DB_URL' não foi encontrada nas variáveis de ambiente nem nos Secrets.")
     st.stop()
 
 @st.cache_resource
