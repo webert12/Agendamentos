@@ -1,23 +1,20 @@
 import streamlit as st
-import pandas as pd
+import os
+import urllib.parse
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from sqlalchemy import create_engine, text
-import urllib.parse
-import os
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA E CSS CUSTOMIZADO ---
 st.set_page_config(page_title="Agendamento VIP", page_icon="✂️", layout="centered")
 
-# Injeção de CSS para deixar o visual mais "Premium"
 st.markdown("""
     <style>
-    /* Ocultar elementos padrão do Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Centralizar textos do cabeçalho */
     .title-text {
         text-align: center;
         font-family: 'Helvetica Neue', sans-serif;
@@ -31,7 +28,6 @@ st.markdown("""
         margin-bottom: 30px;
     }
 
-    /* Estilizar o botão principal */
     div.stButton > button:first-child {
         background: linear-gradient(90deg, #d31027 0%, #ea384d 100%);
         color: white;
@@ -49,7 +45,6 @@ st.markdown("""
         box-shadow: 0px 6px 20px rgba(234, 56, 77, 0.6);
     }
     
-    /* Card de Sucesso Customizado */
     .success-card {
         background-color: #1e1e1e;
         padding: 25px;
@@ -58,15 +53,24 @@ st.markdown("""
         color: #ffffff;
         box-shadow: 0 8px 16px rgba(0,0,0,0.3);
         margin-top: 20px;
+        margin-bottom: 20px;
     }
-    .success-card h3 {
-        margin-top: 0;
-        color: #00cc66;
+    .success-card h3 { margin-top: 0; color: #00cc66; }
+    .success-card hr { border-color: #333333; margin: 15px 0; }
+    
+    /* Estilo para o botão do WhatsApp */
+    .btn-whatsapp {
+        display: block;
+        text-align: center;
+        background-color: #25D366;
+        color: white !important;
+        text-decoration: none;
+        padding: 12px;
+        border-radius: 8px;
+        font-weight: bold;
+        margin-top: 10px;
     }
-    .success-card hr {
-        border-color: #333333;
-        margin: 15px 0;
-    }
+    .btn-whatsapp:hover { background-color: #128C7E; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -96,35 +100,7 @@ except Exception as e:
     st.error(f"Erro ao conectar ao banco de dados: {e}")
     st.stop()
 
-# --- CORREÇÃO AUTOMÁTICA DE ESTRUTURA DO BANCO ---
-def ajustar_estrutura_banco():
-    comandos_adicionar = [
-        "ALTER TABLE agendamentos ADD COLUMN usuario_id VARCHAR(100) DEFAULT 'padrao';",
-        "ALTER TABLE servicos ADD COLUMN usuario_id VARCHAR(100) DEFAULT 'padrao';",
-        "ALTER TABLE agendamentos ADD COLUMN cliente_contato VARCHAR(100);",
-        "ALTER TABLE agendamentos ADD COLUMN cliente_telefone VARCHAR(100);"
-    ]
-    for comando in comandos_adicionar:
-        try:
-            with engine.begin() as conn:
-                conn.execute(text(comando))
-        except Exception:
-            pass 
-
-    comandos_remover_restricao = [
-        "ALTER TABLE agendamentos ALTER COLUMN cliente_telefone DROP NOT NULL;",
-        "ALTER TABLE agendamentos ALTER COLUMN cliente_contato DROP NOT NULL;"
-    ]
-    for comando in comandos_remover_restricao:
-        try:
-            with engine.begin() as conn:
-                conn.execute(text(comando))
-        except Exception:
-            pass 
-
-ajustar_estrutura_banco()
-
-# --- 3. HORÁRIOS PADRÃO DE ATENDIMENTO ---
+# --- 3. HORÁRIOS E LÓGICA DE BLOCOS ---
 HORARIOS_DISPONIVEIS = [
     "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
     "11:00", "11:30", "13:00", "13:30", "14:00", "14:30",
@@ -132,74 +108,108 @@ HORARIOS_DISPONIVEIS = [
     "18:00", "18:30", "19:00"
 ]
 
+def calcular_blocos_necessarios(hora_inicio, duracao_minutos, lista_horarios):
+    quantidade_de_blocos = max(1, duracao_minutos // 30)
+    try:
+        indice_inicial = lista_horarios.index(hora_inicio)
+        blocos_necessarios = lista_horarios[indice_inicial : indice_inicial + quantidade_de_blocos]
+        
+        # Se ultrapassar o último horário da lista
+        if len(blocos_necessarios) < quantidade_de_blocos:
+            return None 
+            
+        return blocos_necessarios
+    except ValueError:
+        return None
+
 # --- 4. FUNÇÕES DE BANCO DE DADOS ---
 def carregar_servicos_salao(salao_id):
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT nome, preco FROM servicos WHERE usuario_id = :user ORDER BY nome ASC"),
-                {"user": salao_clean}
-            )
-            rows = result.fetchall()
-            if rows:
-                return {row[0]: float(row[1]) for row in rows}
+            # Tenta buscar com a coluna duracao_minutos (caso você já tenha criado)
+            try:
+                result = conn.execute(
+                    text("SELECT nome, preco, duracao_minutos FROM servicos WHERE usuario_id = :user ORDER BY nome ASC"),
+                    {"user": salao_clean}
+                )
+                rows = result.fetchall()
+                if rows:
+                    return {row[0]: {"preco": float(row[1]), "duracao": int(row[2])} for row in rows}
+            except Exception:
+                # Fallback: Se não existir a coluna duracao_minutos, assume 30 minutos
+                result = conn.execute(
+                    text("SELECT nome, preco FROM servicos WHERE usuario_id = :user ORDER BY nome ASC"),
+                    {"user": salao_clean}
+                )
+                rows = result.fetchall()
+                if rows:
+                    return {row[0]: {"preco": float(row[1]), "duracao": 30} for row in rows}
     except Exception:
         pass
-    return {"Corte de Cabelo": 25.00, "Barba": 25.00, "Combo (Corte + Barba)": 50.00}
+        
+    # Fallback padrão caso o banco esteja vazio
+    return {
+        "Corte de Cabelo": {"preco": 25.00, "duracao": 30},
+        "Barba": {"preco": 25.00, "duracao": 30},
+        "Combo (Corte + Barba)": {"preco": 50.00, "duracao": 60}
+    }
 
 def buscar_horarios_ocupados(salao_id, data_str):
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
+    horarios_bloqueados = []
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT hora FROM agendamentos WHERE usuario_id = :user AND data = :dt"),
-                {"user": salao_clean, "dt": data_str}
-            )
-            ocupados = []
+            # Tenta buscar com duracao_minutos
+            try:
+                query = text("SELECT hora, duracao_minutos FROM agendamentos WHERE usuario_id = :user AND data = :dt")
+                result = conn.execute(query, {"user": salao_clean, "dt": data_str})
+                usa_duracao = True
+            except Exception:
+                # Fallback: Estrutura antiga
+                query = text("SELECT hora FROM agendamentos WHERE usuario_id = :user AND data = :dt")
+                result = conn.execute(query, {"user": salao_clean, "dt": data_str})
+                usa_duracao = False
+            
             for row in result.fetchall():
-                val = str(row[0]).strip()
-                if len(val) >= 5 and ":" in val:
-                    ocupados.append(val[:5])
-                else:
-                    ocupados.append(val)
-            return ocupados
+                hora_agendada = str(row[0]).strip()[:5]
+                duracao = int(row[1]) if usa_duracao and row[1] else 30
+                
+                blocos = calcular_blocos_necessarios(hora_agendada, duracao, HORARIOS_DISPONIVEIS)
+                if blocos:
+                    horarios_bloqueados.extend(blocos)
+                    
+            return set(horarios_bloqueados) # Usa set para remover duplicatas rapidamente
     except Exception:
-        return []
+        return set()
 
-def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, data_str, hora):
+def salvar_agendamento(salao_id, cliente_nome, cliente_telefone, servico_nome, data_str, hora, duracao):
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
-    contato_clean = cliente_contato.strip()
-    nome_clean = cliente_nome.strip()
+    
+    # Remove formatações do telefone para salvar limpo no banco
+    telefone_clean = re.sub(r'\D', '', cliente_telefone)
 
-    try:
-        with engine.begin() as conn:
+    with engine.begin() as conn:
+        try:
+            # Tenta inserir com duracao_minutos
             conn.execute(
                 text("""
-                INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, cliente_telefone, servico_nome, data, hora)
-                VALUES (:user, :nome, :contato, :contato, :servico, :data, :hora)
+                INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_telefone, servico_nome, data, hora, duracao_minutos)
+                VALUES (:user, :nome, :telefone, :servico, :data, :hora, :duracao)
                 """),
-                {"user": salao_clean, "nome": nome_clean, "contato": contato_clean, "servico": servico_nome, "data": data_str, "hora": hora}
+                {"user": salao_clean, "nome": cliente_nome.strip(), "telefone": telefone_clean, 
+                 "servico": servico_nome, "data": data_str, "hora": hora, "duracao": duracao}
             )
-    except Exception:
-        try:
-            with engine.begin() as conn_fallback_1:
-                conn_fallback_1.execute(
-                    text("""
-                    INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_telefone, servico_nome, data, hora)
-                    VALUES (:user, :nome, :contato, :servico, :data, :hora)
-                    """),
-                    {"user": salao_clean, "nome": nome_clean, "contato": contato_clean, "servico": servico_nome, "data": data_str, "hora": hora}
-                )
         except Exception:
-            with engine.begin() as conn_fallback_2:
-                conn_fallback_2.execute(
-                    text("""
-                    INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
-                    VALUES (:user, :nome, :contato, :servico, :data, :hora)
-                    """),
-                    {"user": salao_clean, "nome": nome_clean, "contato": contato_clean, "servico": servico_nome, "data": data_str, "hora": hora}
-                )
+            # Fallback se a coluna duracao_minutos ou cliente_telefone não existirem exatamente assim
+            conn.execute(
+                text("""
+                INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
+                VALUES (:user, :nome, :telefone, :servico, :data, :hora)
+                """),
+                {"user": salao_clean, "nome": cliente_nome.strip(), "telefone": telefone_clean, 
+                 "servico": servico_nome, "data": data_str, "hora": hora}
+            )
 
 # --- 5. PARÂMETROS DA URL E IDENTIFICAÇÃO DO SALÃO ---
 query_params = st.query_params
@@ -207,108 +217,111 @@ salao_param = query_params.get("salao", "padrao")
 salao_id_clean = urllib.parse.unquote(str(salao_param)).strip().lower()
 nome_salao_formatado = salao_id_clean.replace('_', ' ').replace('-', ' ').title()
 
-# --- 6. INTERFACE DE AGENDAMENTO (VISUAL MODERNO) ---
-
-# Cabeçalho customizado via HTML
+# --- 6. INTERFACE DE AGENDAMENTO ---
 st.markdown(f"<h1 class='title-text'>✂️ {nome_salao_formatado}</h1>", unsafe_allow_html=True)
 st.markdown("<p class='subtitle-text'>Agendamento Online Rápido e Profissional</p>", unsafe_allow_html=True)
+st.markdown("---")
 
-servicos_disponiveis = carregar_servicos_salao(salao_id_clean)
 agora_br = datetime.now(TZ_BR)
 hoje_str = agora_br.strftime("%Y-%m-%d")
 hora_atual_str = agora_br.strftime("%H:%M")
 
-# Divisória estilosa
-st.markdown("---")
+servicos_disponiveis = carregar_servicos_salao(salao_id_clean)
 
-# SELEÇÃO DE DATA
-data_escolhida = st.date_input("📅 Escolha o Dia do Agendamento:", min_value=agora_br.date())
-data_str = data_escolhida.strftime("%Y-%m-%d")
-ocupados = buscar_horarios_ocupados(salao_id_clean, data_str)
+# ETAPA 1: ESCOLHER DATA E SERVIÇO (Fora do formulário principal)
+col_data, col_servico = st.columns(2)
+with col_data:
+    data_escolhida = st.date_input("📅 Escolha o Dia:", min_value=agora_br.date())
+    data_str = data_escolhida.strftime("%Y-%m-%d")
 
-opcoes_horario = ["-- Selecione o Horário --"]
-for h in HORARIOS_DISPONIVEIS:
-    eh_passado = (data_str == hoje_str) and (h <= hora_atual_str)
-    eh_reservado = h in ocupados
-
-    if eh_passado:
-        opcoes_horario.append(f"🔴 {h} - (HORÁRIO JÁ PASSOU)")
-    elif eh_reservado:
-        opcoes_horario.append(f"🔴 {h} - (RESERVADO)")
+with col_servico:
+    if servicos_disponiveis:
+        servico_escolhido = st.selectbox(
+            "✂️ Escolha o Serviço:",
+            options=list(servicos_disponiveis.keys()),
+            format_func=lambda x: f"{x} - R$ {servicos_disponiveis[x]['preco']:.2f}"
+        )
+        duracao_servico = servicos_disponiveis[servico_escolhido]["duracao"]
     else:
-        opcoes_horario.append(f"🟢 {h} - (DISPONÍVEL)")
+        st.warning("Nenhum serviço disponível no momento.")
+        servico_escolhido = None
+        duracao_servico = 30
 
-# FORMULÁRIO DE DADOS DO CLIENTE
+# ETAPA 2: CALCULAR HORÁRIOS VÁLIDOS
+ocupados = buscar_horarios_ocupados(salao_id_clean, data_str)
+opcoes_horario = ["-- Selecione o Horário --"]
+
+if servico_escolhido:
+    for h in HORARIOS_DISPONIVEIS:
+        # Pula horários que já passaram hoje
+        if data_str == hoje_str and h <= hora_atual_str:
+            continue
+            
+        # Verifica se os blocos necessários para o serviço estão livres
+        blocos_necessarios = calcular_blocos_necessarios(h, duracao_servico, HORARIOS_DISPONIVEIS)
+        
+        if blocos_necessarios and not any(bloco in ocupados for bloco in blocos_necessarios):
+            opcoes_horario.append(h)
+
+# ETAPA 3: FORMULÁRIO DE CLIENTE
 with st.form("form_agendamento_cliente", clear_on_submit=False):
+    st.markdown("### Preencha seus dados para confirmar")
     
-    # Organizando campos lado a lado para telas maiores
     col1, col2 = st.columns(2)
     with col1:
         nome_cliente = st.text_input("👤 Seu Nome Completo:")
     with col2:
-        telefone_cliente = st.text_input("📱 Seu WhatsApp (com DDD):")
-
-    if servicos_disponiveis:
-        servico_escolhido = st.selectbox(
-            "✂️ Escolha o Serviço Desejado:",
-            options=list(servicos_disponiveis.keys()),
-            format_func=lambda x: f"{x} - R$ {servicos_disponiveis[x]:.2f}"
-        )
-    else:
-        st.warning("Nenhum serviço disponível no momento.")
-        servico_escolhido = None
+        telefone_cliente = st.text_input("📱 WhatsApp (com DDD):", placeholder="Ex: 11999999999")
         
-    horario_selecionado = st.selectbox("⏰ Escolha o Horário Desejado:", options=opcoes_horario)
+    if len(opcoes_horario) == 1:
+        st.warning("⚠️ Não há horários disponíveis com tempo suficiente para este serviço nesta data.")
+        horario_selecionado = "-- Selecione o Horário --"
+    else:
+        horario_selecionado = st.selectbox("⏰ Horário Disponível:", options=opcoes_horario)
     
-    # Botão de envio
-    st.write("") # Espaçamento
+    st.write("")
     enviar = st.form_submit_button("Confirmar Agendamento 🚀", use_container_width=True)
 
-# --- 7. PROCESSAMENTO E MENSAGEM DE CONFIRMAÇÃO ---
+# --- 7. PROCESSAMENTO DO ENVIO ---
 if enviar:
     if not nome_cliente or not telefone_cliente:
-        st.warning("⚠️ Por favor, preencha seu nome e WhatsApp.")
+        st.error("⚠️ Por favor, preencha seu nome e WhatsApp.")
     elif not servico_escolhido:
         st.error("⚠️ Selecione um serviço válido.")
     elif horario_selecionado == "-- Selecione o Horário --":
-        st.warning("⚠️ Por favor, escolha um horário na lista acima.")
-    elif "🔴" in horario_selecionado:
-        hora_ext = horario_selecionado.split()[1]
-        if "HORÁRIO JÁ PASSOU" in horario_selecionado:
-            st.error(f"❌ O horário {hora_ext} já passou. Escolha um horário futuro.")
-        else:
-            st.error(f"❌ O horário {hora_ext} já possui uma reserva. Escolha um horário verde (🟢).")
+        st.error("⚠️ Por favor, escolha um horário na lista.")
     else:
-        hora_limpa = horario_selecionado.split()[1]
-        ocupados_agora = buscar_horarios_ocupados(salao_id_clean, data_str)
-        
-        if hora_limpa in ocupados_agora:
-            st.error(f"❌ O horário **{hora_limpa}** acabou de ser reservado. Escolha outro horário.")
-        else:
-            try:
-                salvar_agendamento(
-                    salao_id=salao_id_clean, cliente_nome=nome_cliente, 
-                    cliente_contato=telefone_cliente, servico_nome=servico_escolhido, 
-                    data_str=data_str, hora=hora_limpa
-                )
-                st.balloons()
-                
-                # MENSAGEM DE SUCESSO PROFISSIONAL (Card HTML)
-                mensagem_sucesso = f"""
-                <div class="success-card">
-                    <h3>🎉 Agendamento Confirmado!</h3>
-                    <p>Olá, <b>{nome_cliente}</b>! Seu horário foi reservado com sucesso no sistema.</p>
-                    <hr>
-                    <p>📅 <b>Data:</b> {data_escolhida.strftime('%d/%m/%Y')}</p>
-                    <p>⏰ <b>Horário:</b> {hora_limpa}</p>
-                    <p>✂️ <b>Serviço:</b> {servico_escolhido}</p>
-                    <br>
-                    <p style="font-size: 13px; color: #bbbbbb;">
-                        Agradecemos a preferência! Por favor, chegue com 5 minutos de antecedência.
-                    </p>
-                </div>
-                """
-                st.markdown(mensagem_sucesso, unsafe_allow_html=True)
-                
-            except Exception as e:
-                st.error(f"Ocorreu um erro ao salvar o agendamento: {e}")
+        try:
+            salvar_agendamento(
+                salao_id=salao_id_clean, 
+                cliente_nome=nome_cliente, 
+                cliente_telefone=telefone_cliente, 
+                servico_nome=servico_escolhido, 
+                data_str=data_str, 
+                hora=horario_selecionado,
+                duracao=duracao_servico
+            )
+            st.balloons()
+            
+            # Gera link do WhatsApp (O cliente clica e envia mensagem para o salão)
+            texto_wa = urllib.parse.quote(f"Olá! Acabei de agendar um(a) {servico_escolhido} para o dia {data_escolhida.strftime('%d/%m/%Y')} às {horario_selecionado}. Meu nome é {nome_cliente}.")
+            link_wa = f"https://wa.me/?text={texto_wa}"
+            
+            mensagem_sucesso = f"""
+            <div class="success-card">
+                <h3>🎉 Agendamento Confirmado!</h3>
+                <p>Olá, <b>{nome_cliente}</b>! Seu horário foi reservado com sucesso.</p>
+                <hr>
+                <p>📅 <b>Data:</b> {data_escolhida.strftime('%d/%m/%Y')}</p>
+                <p>⏰ <b>Horário:</b> {horario_selecionado} (Duração: {duracao_servico} min)</p>
+                <p>✂️ <b>Serviço:</b> {servico_escolhido}</p>
+                <br>
+                <a href="{link_wa}" target="_blank" class="btn-whatsapp">
+                    📱 Enviar Confirmação no WhatsApp
+                </a>
+            </div>
+            """
+            st.markdown(mensagem_sucesso, unsafe_allow_html=True)
+            
+        except Exception as e:
+            st.error(f"❌ Ocorreu um erro ao salvar o agendamento no banco de dados. Detalhes: {e}")
