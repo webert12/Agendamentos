@@ -55,31 +55,51 @@ HORARIOS_DISPONIVEIS = [
 
 # --- 4. FUNÇÕES DE BANCO DE DADOS ---
 def buscar_dados_salao(salao_id):
-    """Busca os serviços e o WhatsApp do salão cadastrado no Supabase."""
+    """Busca os serviços e o WhatsApp do salão cadastrado no Supabase/PostgreSQL."""
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
     servicos = {}
     whatsapp = ""
     
     try:
         with engine.connect() as conn:
-            # 1. Busca o WhatsApp do salão na tabela de usuários
+            # 1. Busca o WhatsApp do salão na tabela de usuários (busca por usuario_id ou usuario)
             res_user = conn.execute(
-                text("SELECT whatsapp FROM usuarios WHERE usuario_id = :user"), 
+                text("""
+                    SELECT whatsapp 
+                    FROM usuarios 
+                    WHERE LOWER(usuario_id) = :user OR LOWER(usuario) = :user 
+                    LIMIT 1
+                """), 
                 {"user": salao_clean}
             ).fetchone()
+            
             if res_user and res_user[0]:
                 whatsapp = str(res_user[0])
 
             # 2. Busca os serviços cadastrados do salão
             res_serv = conn.execute(
-                text("SELECT nome, preco FROM servicos WHERE usuario_id = :user ORDER BY nome ASC"), 
+                text("""
+                    SELECT nome, preco 
+                    FROM servicos 
+                    WHERE LOWER(usuario_id) = :user OR LOWER(usuario) = :user 
+                    ORDER BY nome ASC
+                """), 
                 {"user": salao_clean}
             )
             rows = res_serv.fetchall()
             if rows:
                 servicos = {row[0]: float(row[1]) for row in rows}
     except Exception:
-        pass
+        try:
+            with engine.connect() as conn:
+                res_user = conn.execute(
+                    text("SELECT whatsapp FROM usuarios WHERE usuario_id = :user"), 
+                    {"user": salao_clean}
+                ).fetchone()
+                if res_user and res_user[0]:
+                    whatsapp = str(res_user[0])
+        except Exception:
+            pass
 
     # Fallback caso não existam serviços cadastrados ainda
     if not servicos:
@@ -92,7 +112,7 @@ def buscar_horarios_ocupados(salao_id, data_str):
     try:
         with engine.connect() as conn:
             result = conn.execute(
-                text("SELECT hora FROM agendamentos WHERE usuario_id = :user AND data = :dt"), 
+                text("SELECT hora FROM agendamentos WHERE LOWER(usuario_id) = :user AND data = :dt"), 
                 {"user": salao_clean, "dt": data_str}
             )
             ocupados = []
@@ -154,7 +174,7 @@ nome_salao_formatado = salao_id_clean.replace('_', ' ').replace('-', ' ').title(
 # Busca os serviços e o WhatsApp cadastrado diretamente no Supabase
 servicos_disponiveis, whatsapp_banco = buscar_dados_salao(salao_id_clean)
 
-# Prioriza o WhatsApp do banco de dados; se não houver, utiliza o da URL/Env
+# Prioriza o WhatsApp do banco de dados (cadastrado pelo ADM); se não houver, utiliza a URL/Env
 telefone_dono_final = whatsapp_banco if whatsapp_banco else telefone_dono_param
 
 # --- 6. INTERFACE DE AGENDAMENTO DO CLIENTE ---
@@ -254,12 +274,14 @@ if enviar:
                     """
                 )
                 
-                # --- ENVIAR NOTIFICAÇÃO VIA WHATSAPP PARA O ESTABELECIMENTO ---
+                # --- TRATAMENTO E FORMATAÇÃO DO WHATSAPP DO DONO ---
                 num_dono_limpo = re.sub(r'\D', '', str(telefone_dono_final))
+                
+                # Adiciona o código do país 55 caso o número venha apenas com DDD + número (10 ou 11 dígitos)
                 if num_dono_limpo and not num_dono_limpo.startswith("55") and len(num_dono_limpo) in [10, 11]:
                     num_dono_limpo = f"55{num_dono_limpo}"
 
-                # Mensagem formatada para o WhatsApp
+                # Mensagem que o cliente enviará ao dono
                 msg_whatsapp = (
                     f"Olá! Acabei de realizar um agendamento pelo site.\n\n"
                     f"👤 *Cliente:* {nome_cliente}\n"
@@ -269,12 +291,13 @@ if enviar:
                 )
                 msg_encoded = urllib.parse.quote(msg_whatsapp)
 
+                # Se o número do dono foi encontrado no banco, redireciona diretamente para ele
                 if num_dono_limpo:
                     link_wa = f"https://wa.me/{num_dono_limpo}?text={msg_encoded}"
                 else:
                     link_wa = f"https://wa.me/?text={msg_encoded}"
 
-                # --- HTML ALINHADO À ESQUERDA PARA EVITAR MODO DE CÓDIGO NO STREAMLIT ---
+                # --- BOTÃO PERSONALIZADO DO WHATSAPP (SEM RECUO PARA EVITAR MODO CÓDIGO) ---
                 html_botao = f"""<div style="background-color: #f0fdf4; border: 2px solid #25D366; border-radius: 12px; padding: 18px; text-align: center; margin-top: 20px; margin-bottom: 20px;">
 <p style="color: #166534; font-size: 16px; font-weight: 600; margin-bottom: 12px;">⚠️ <b>ÚLTIMO PASSO:</b> Clique no botão abaixo para enviar a confirmação direta para o WhatsApp do salão.</p>
 <a href="{link_wa}" target="_blank" style="text-decoration: none;">
