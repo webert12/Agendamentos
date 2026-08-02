@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -10,10 +11,19 @@ st.set_page_config(page_title="Agendamento Online", page_icon="✂️", layout="
 TZ_BR = ZoneInfo("America/Sao_Paulo")
 
 # --- 2. CONEXÃO COM O BANCO DE DADOS POSTGRESQL ---
-if "DB_URL" in st.secrets:
-    DB_URL = st.secrets["DB_URL"]
-else:
-    st.error("❌ ERRO: A variável 'DB_URL' não foi encontrada nos Secrets do Streamlit Cloud.")
+# Busca primeiro nas Variáveis de Ambiente (Padrão para Render, Heroku, etc.)
+DB_URL = os.getenv("DB_URL")
+
+# Fallback: Tenta buscar do st.secrets caso esteja rodando localmente ou no Streamlit Cloud
+if not DB_URL:
+    try:
+        if "DB_URL" in st.secrets:
+            DB_URL = st.secrets["DB_URL"]
+    except Exception:
+        pass
+
+if not DB_URL:
+    st.error("❌ ERRO: A variável 'DB_URL' não foi encontrada nas Variáveis de Ambiente nem nos Secrets do Streamlit.")
     st.stop()
 
 @st.cache_resource
