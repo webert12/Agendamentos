@@ -100,50 +100,25 @@ except Exception as e:
     st.error(f"Erro ao conectar ao banco de dados: {e}")
     st.stop()
 
-# --- 3. HORÁRIOS E LÓGICA DE BLOCOS ---
+# --- 3. HORÁRIOS DISPONÍVEIS ---
 HORARIOS_DISPONIVEIS = [
     "08:00", "09:00", "10:00", "11:00", 
     "13:00", "14:00", "15:00", "16:00", 
     "17:00", "18:00", "19:00"
 ]
 
-def calcular_blocos_necessarios(hora_inicio, duracao_minutos, lista_horarios):
-    quantidade_de_blocos = max(1, duracao_minutos // 30)
-    try:
-        indice_inicial = lista_horarios.index(hora_inicio)
-        blocos_necessarios = lista_horarios[indice_inicial : indice_inicial + quantidade_de_blocos]
-        
-        # Se ultrapassar o último horário da lista
-        if len(blocos_necessarios) < quantidade_de_blocos:
-            return None 
-            
-        return blocos_necessarios
-    except ValueError:
-        return None
-
-# --- 4. FUNÇÕES DE BANCO DE DADOS ---
+# --- 4. FUNÇÕES DE BANCO DE DADOS (ORIGINAIS E LIMPAS) ---
 def carregar_servicos_salao(salao_id):
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
     try:
         with engine.connect() as conn:
-            # Tenta buscar com a coluna duracao_minutos (caso você já tenha criado)
-            try:
-                result = conn.execute(
-                    text("SELECT nome, preco, duracao_minutos FROM servicos WHERE usuario_id = :user ORDER BY nome ASC"),
-                    {"user": salao_clean}
-                )
-                rows = result.fetchall()
-                if rows:
-                    return {row[0]: {"preco": float(row[1]), "duracao": int(row[2])} for row in rows}
-            except Exception:
-                # Fallback: Se não existir a coluna duracao_minutos, assume 30 minutos
-                result = conn.execute(
-                    text("SELECT nome, preco FROM servicos WHERE usuario_id = :user ORDER BY nome ASC"),
-                    {"user": salao_clean}
-                )
-                rows = result.fetchall()
-                if rows:
-                    return {row[0]: {"preco": float(row[1]), "duracao": 30} for row in rows}
+            result = conn.execute(
+                text("SELECT nome, preco FROM servicos WHERE usuario_id = :user ORDER BY nome ASC"),
+                {"user": salao_clean}
+            )
+            rows = result.fetchall()
+            if rows:
+                return {row[0]: {"preco": float(row[1]), "duracao": 30} for row in rows}
     except Exception:
         pass
         
@@ -151,7 +126,7 @@ def carregar_servicos_salao(salao_id):
     return {
         "Corte de Cabelo": {"preco": 25.00, "duracao": 30},
         "Barba": {"preco": 25.00, "duracao": 30},
-        "Combo (Corte + Barba)": {"preco": 50.00, "duracao": 60}
+        "Combo (Corte + Barba)": {"preco": 50.00, "duracao": 30}
     }
 
 def buscar_horarios_ocupados(salao_id, data_str):
@@ -159,56 +134,32 @@ def buscar_horarios_ocupados(salao_id, data_str):
     horarios_bloqueados = []
     try:
         with engine.connect() as conn:
-            # Tenta buscar com duracao_minutos
-            try:
-                query = text("SELECT hora, duracao_minutos FROM agendamentos WHERE usuario_id = :user AND data = :dt")
-                result = conn.execute(query, {"user": salao_clean, "dt": data_str})
-                usa_duracao = True
-            except Exception:
-                # Fallback: Estrutura antiga
-                query = text("SELECT hora FROM agendamentos WHERE usuario_id = :user AND data = :dt")
-                result = conn.execute(query, {"user": salao_clean, "dt": data_str})
-                usa_duracao = False
+            query = text("SELECT hora FROM agendamentos WHERE usuario_id = :user AND data = :dt")
+            result = conn.execute(query, {"user": salao_clean, "dt": data_str})
             
             for row in result.fetchall():
                 hora_agendada = str(row[0]).strip()[:5]
-                duracao = int(row[1]) if usa_duracao and row[1] else 30
-                
-                blocos = calcular_blocos_necessarios(hora_agendada, duracao, HORARIOS_DISPONIVEIS)
-                if blocos:
-                    horarios_bloqueados.extend(blocos)
+                horarios_bloqueados.append(hora_agendada)
                     
-            return set(horarios_bloqueados) # Usa set para remover duplicatas rapidamente
+            return set(horarios_bloqueados)
     except Exception:
         return set()
 
-def salvar_agendamento(salao_id, cliente_nome, cliente_telefone, servico_nome, data_str, hora, duracao):
+def salvar_agendamento(salao_id, cliente_nome, cliente_telefone, servico_nome, data_str, hora):
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
     
     # Remove formatações do telefone para salvar limpo no banco
     telefone_clean = re.sub(r'\D', '', cliente_telefone)
 
     with engine.begin() as conn:
-        try:
-            # Tenta inserir com duracao_minutos
-            conn.execute(
-                text("""
-                INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_telefone, servico_nome, data, hora, duracao_minutos)
-                VALUES (:user, :nome, :telefone, :servico, :data, :hora, :duracao)
-                """),
-                {"user": salao_clean, "nome": cliente_nome.strip(), "telefone": telefone_clean, 
-                 "servico": servico_nome, "data": data_str, "hora": hora, "duracao": duracao}
-            )
-        except Exception:
-            # Fallback se a coluna duracao_minutos ou cliente_telefone não existirem exatamente assim
-            conn.execute(
-                text("""
-                INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
-                VALUES (:user, :nome, :telefone, :servico, :data, :hora)
-                """),
-                {"user": salao_clean, "nome": cliente_nome.strip(), "telefone": telefone_clean, 
-                 "servico": servico_nome, "data": data_str, "hora": hora}
-            )
+        conn.execute(
+            text("""
+            INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
+            VALUES (:user, :nome, :telefone, :servico, :data, :hora)
+            """),
+            {"user": salao_clean, "nome": cliente_nome.strip(), "telefone": telefone_clean, 
+             "servico": servico_nome, "data": data_str, "hora": hora}
+        )
 
 # --- 5. PARÂMETROS DA URL E IDENTIFICAÇÃO DO SALÃO ---
 query_params = st.query_params
@@ -240,27 +191,22 @@ with col_servico:
             options=list(servicos_disponiveis.keys()),
             format_func=lambda x: f"{x} - R$ {servicos_disponiveis[x]['preco']:.2f}"
         )
-        duracao_servico = servicos_disponiveis[servico_escolhido]["duracao"]
     else:
         st.warning("Nenhum serviço disponível no momento.")
         servico_escolhido = None
-        duracao_servico = 30
 
-# ETAPA 2: CALCULAR HORÁRIOS VÁLIDOS
+# ETAPA 2: FILTRAR HORÁRIOS VÁLIDOS
 ocupados = buscar_horarios_ocupados(salao_id_clean, data_str)
 opcoes_horario = ["-- Selecione o Horário --"]
 
-if servico_escolhido:
-    for h in HORARIOS_DISPONIVEIS:
-        # Pula horários que já passaram hoje
-        if data_str == hoje_str and h <= hora_atual_str:
-            continue
-            
-        # Verifica se os blocos necessários para o serviço estão livres
-        blocos_necessarios = calcular_blocos_necessarios(h, duracao_servico, HORARIOS_DISPONIVEIS)
+for h in HORARIOS_DISPONIVEIS:
+    # Pula horários que já passaram hoje
+    if data_str == hoje_str and h <= hora_atual_str:
+        continue
         
-        if blocos_necessarios and not any(bloco in ocupados for bloco in blocos_necessarios):
-            opcoes_horario.append(h)
+    # Adiciona apenas se o horário estiver livre
+    if h not in ocupados:
+        opcoes_horario.append(h)
 
 # ETAPA 3: FORMULÁRIO DE CLIENTE
 with st.form("form_agendamento_cliente", clear_on_submit=False):
@@ -273,7 +219,7 @@ with st.form("form_agendamento_cliente", clear_on_submit=False):
         telefone_cliente = st.text_input("📱 WhatsApp (com DDD):", placeholder="Ex: 11999999999")
         
     if len(opcoes_horario) == 1:
-        st.warning("⚠️ Não há horários disponíveis com tempo suficiente para este serviço nesta data.")
+        st.warning("⚠️ Não há horários disponíveis nesta data.")
         horario_selecionado = "-- Selecione o Horário --"
     else:
         horario_selecionado = st.selectbox("⏰ Horário Disponível:", options=opcoes_horario)
@@ -297,8 +243,7 @@ if enviar:
                 cliente_telefone=telefone_cliente, 
                 servico_nome=servico_escolhido, 
                 data_str=data_str, 
-                hora=horario_selecionado,
-                duracao=duracao_servico
+                hora=horario_selecionado
             )
             st.balloons()
             
@@ -312,7 +257,7 @@ if enviar:
                 <p>Olá, <b>{nome_cliente}</b>! Seu horário foi reservado com sucesso.</p>
                 <hr>
                 <p>📅 <b>Data:</b> {data_escolhida.strftime('%d/%m/%Y')}</p>
-                <p>⏰ <b>Horário:</b> {horario_selecionado} (Duração: {duracao_servico} min)</p>
+                <p>⏰ <b>Horário:</b> {horario_selecionado}</p>
                 <p>✂️ <b>Serviço:</b> {servico_escolhido}</p>
                 <br>
                 <a href="{link_wa}" target="_blank" class="btn-whatsapp">
