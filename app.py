@@ -53,7 +53,28 @@ HORARIOS_DISPONIVEIS = [
     "18:00", "18:30", "19:00"
 ]
 
-# --- 4. FUNÇÕES DE BANCO DE DADOS ---
+# --- 4. FUNÇÃO PARA FORMATAR WHATSAPP NO PADRÃO INTERNACIONAL ---
+def formatar_whatsapp_dono(numero_bruto):
+    """Limpa e formata o número do dono para garantir abertura direta do chat."""
+    if not numero_bruto:
+        return ""
+    
+    # Mantém apenas os números
+    num_limpo = re.sub(r'\D', '', str(numero_bruto))
+    
+    if not num_limpo:
+        return ""
+        
+    # Remove zeros iniciais se houver (ex: 08199999999 -> 8199999999)
+    num_limpo = num_limpo.lstrip('0')
+    
+    # Se o número tiver DDD + número (10 ou 11 dígitos), insere o DDI 55 do Brasil
+    if len(num_limpo) in [10, 11]:
+        num_limpo = f"55{num_limpo}"
+        
+    return num_limpo
+
+# --- 5. FUNÇÕES DE BANCO DE DADOS ---
 def buscar_dados_salao(salao_id):
     """Busca os serviços e o WhatsApp do salão cadastrado no Supabase/PostgreSQL."""
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
@@ -62,7 +83,7 @@ def buscar_dados_salao(salao_id):
     
     try:
         with engine.connect() as conn:
-            # 1. Busca o WhatsApp do salão na tabela de usuários (busca por usuario_id ou usuario)
+            # 1. Busca o WhatsApp do salão na tabela de usuários
             res_user = conn.execute(
                 text("""
                     SELECT whatsapp 
@@ -93,7 +114,7 @@ def buscar_dados_salao(salao_id):
         try:
             with engine.connect() as conn:
                 res_user = conn.execute(
-                    text("SELECT whatsapp FROM usuarios WHERE usuario_id = :user"), 
+                    text("SELECT whatsapp FROM usuarios WHERE LOWER(usuario_id) = :user OR LOWER(usuario) = :user"), 
                     {"user": salao_clean}
                 ).fetchone()
                 if res_user and res_user[0]:
@@ -163,7 +184,7 @@ def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, da
                 }
             )
 
-# --- 5. PARÂMETROS DA URL E IDENTIFICAÇÃO DO SALÃO ---
+# --- 6. PARÂMETROS DA URL E IDENTIFICAÇÃO DO SALÃO ---
 query_params = st.query_params
 salao_param = query_params.get("salao", "padrao")
 telefone_dono_param = query_params.get("whats", os.getenv("TELEFONE_DONO", ""))
@@ -175,9 +196,10 @@ nome_salao_formatado = salao_id_clean.replace('_', ' ').replace('-', ' ').title(
 servicos_disponiveis, whatsapp_banco = buscar_dados_salao(salao_id_clean)
 
 # Prioriza o WhatsApp do banco de dados (cadastrado pelo ADM); se não houver, utiliza a URL/Env
-telefone_dono_final = whatsapp_banco if whatsapp_banco else telefone_dono_param
+telefone_dono_bruto = whatsapp_banco if whatsapp_banco else telefone_dono_param
+telefone_dono_final = formatar_whatsapp_dono(telefone_dono_bruto)
 
-# --- 6. INTERFACE DE AGENDAMENTO DO CLIENTE ---
+# --- 7. INTERFACE DE AGENDAMENTO DO CLIENTE ---
 st.title("✂️ Agendamento Online")
 st.write(f"Seja bem-vindo ao sistema de agendamento de **{nome_salao_formatado}**.")
 
@@ -228,7 +250,7 @@ with st.form("form_agendamento_cliente", clear_on_submit=True):
 
     enviar = st.form_submit_button("Confirmar Agendamento 🚀", use_container_width=True)
 
-# --- 7. PROCESSAMENTO E VALIDAÇÃO DO FORMULÁRIO ---
+# --- 8. PROCESSAMENTO E VALIDAÇÃO DO FORMULÁRIO ---
 if enviar:
     if not nome_cliente or not telefone_cliente:
         st.warning("⚠️ Por favor, preencha seu nome e WhatsApp.")
@@ -274,14 +296,7 @@ if enviar:
                     """
                 )
                 
-                # --- TRATAMENTO E FORMATAÇÃO DO WHATSAPP DO DONO ---
-                num_dono_limpo = re.sub(r'\D', '', str(telefone_dono_final))
-                
-                # Adiciona o código do país 55 caso o número venha apenas com DDD + número (10 ou 11 dígitos)
-                if num_dono_limpo and not num_dono_limpo.startswith("55") and len(num_dono_limpo) in [10, 11]:
-                    num_dono_limpo = f"55{num_dono_limpo}"
-
-                # Mensagem que o cliente enviará ao dono
+                # Mensagem padronizada para o WhatsApp
                 msg_whatsapp = (
                     f"Olá! Acabei de realizar um agendamento pelo site.\n\n"
                     f"👤 *Cliente:* {nome_cliente}\n"
@@ -291,13 +306,14 @@ if enviar:
                 )
                 msg_encoded = urllib.parse.quote(msg_whatsapp)
 
-                # Se o número do dono foi encontrado no banco, redireciona diretamente para ele
-                if num_dono_limpo:
-                    link_wa = f"https://wa.me/{num_dono_limpo}?text={msg_encoded}"
+                # Monta o link direcionando EXATAMENTE para o número cadastrado do salão
+                if telefone_dono_final:
+                    link_wa = f"https://api.whatsapp.com/send?phone={telefone_dono_final}&text={msg_encoded}"
                 else:
-                    link_wa = f"https://wa.me/?text={msg_encoded}"
+                    # Fallback caso o dono não tenha nenhum WhatsApp cadastrado no banco ainda
+                    link_wa = f"https://api.whatsapp.com/send?text={msg_encoded}"
 
-                # --- BOTÃO PERSONALIZADO DO WHATSAPP (SEM RECUO PARA EVITAR MODO CÓDIGO) ---
+                # --- BOTÃO DE CONFIRMAÇÃO DIRETA DO WHATSAPP ---
                 html_botao = f"""<div style="background-color: #f0fdf4; border: 2px solid #25D366; border-radius: 12px; padding: 18px; text-align: center; margin-top: 20px; margin-bottom: 20px;">
 <p style="color: #166534; font-size: 16px; font-weight: 600; margin-bottom: 12px;">⚠️ <b>ÚLTIMO PASSO:</b> Clique no botão abaixo para enviar a confirmação direta para o WhatsApp do salão.</p>
 <a href="{link_wa}" target="_blank" style="text-decoration: none;">
@@ -306,7 +322,7 @@ if enviar:
 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"/>
 <path d="M12 0C5.373 0 0 5.373 0 12c0 2.119.553 4.11 1.519 5.84L0 24l6.335-1.652C8.016 23.284 9.948 23.858 12 23.858c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.802 0-3.567-.484-5.116-1.403l-.367-.218-3.799.992 1.012-3.702-.24-.38C2.536 15.542 2.02 13.808 2.02 12c0-5.503 4.477-9.98 9.98-9.98 5.503 0 9.98 4.477 9.98 9.98 0 5.503-4.477 9.982-9.98 9.982z"/>
 </svg>
-<span>Confirmar Agendamento no WhatsApp</span>
+<span>Enviar Confirmação no WhatsApp</span>
 </div>
 </a>
 </div>"""
