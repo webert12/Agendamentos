@@ -54,20 +54,38 @@ HORARIOS_DISPONIVEIS = [
 ]
 
 # --- 4. FUNÇÕES DE BANCO DE DADOS ---
-def carregar_servicos_salao(salao_id):
+def buscar_dados_salao(salao_id):
+    """Busca os serviços e o WhatsApp do salão cadastrado no Supabase."""
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
+    servicos = {}
+    whatsapp = ""
+    
     try:
         with engine.connect() as conn:
-            result = conn.execute(
+            # 1. Busca o WhatsApp do salão na tabela de usuários
+            res_user = conn.execute(
+                text("SELECT whatsapp FROM usuarios WHERE usuario_id = :user"), 
+                {"user": salao_clean}
+            ).fetchone()
+            if res_user and res_user[0]:
+                whatsapp = str(res_user[0])
+
+            # 2. Busca os serviços cadastrados do salão
+            res_serv = conn.execute(
                 text("SELECT nome, preco FROM servicos WHERE usuario_id = :user ORDER BY nome ASC"), 
                 {"user": salao_clean}
             )
-            rows = result.fetchall()
+            rows = res_serv.fetchall()
             if rows:
-                return {row[0]: float(row[1]) for row in rows}
+                servicos = {row[0]: float(row[1]) for row in rows}
     except Exception:
         pass
-    return {"Corte de Cabelo": 25.00, "Barba": 25.00, "Combo (Corte + Barba)": 50.00}
+
+    # Fallback caso não existam serviços cadastrados ainda
+    if not servicos:
+        servicos = {"Corte de Cabelo": 25.00, "Barba": 25.00, "Combo (Corte + Barba)": 50.00}
+        
+    return servicos, whatsapp
 
 def buscar_horarios_ocupados(salao_id, data_str):
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
@@ -133,11 +151,15 @@ telefone_dono_param = query_params.get("whats", os.getenv("TELEFONE_DONO", ""))
 salao_id_clean = urllib.parse.unquote(str(salao_param)).strip().lower()
 nome_salao_formatado = salao_id_clean.replace('_', ' ').replace('-', ' ').title()
 
+# Busca os serviços e o WhatsApp cadastrado diretamente no Supabase
+servicos_disponiveis, whatsapp_banco = buscar_dados_salao(salao_id_clean)
+
+# Prioriza o WhatsApp do banco de dados; se não houver, utiliza o da URL/Env
+telefone_dono_final = whatsapp_banco if whatsapp_banco else telefone_dono_param
+
 # --- 6. INTERFACE DE AGENDAMENTO DO CLIENTE ---
 st.title("✂️ Agendamento Online")
 st.write(f"Seja bem-vindo ao sistema de agendamento de **{nome_salao_formatado}**.")
-
-servicos_disponiveis = carregar_servicos_salao(salao_id_clean)
 
 # Obter data e hora atual no fuso de Brasília
 agora_br = datetime.now(TZ_BR)
@@ -233,7 +255,7 @@ if enviar:
                 )
                 
                 # --- ENVIAR NOTIFICAÇÃO VIA WHATSAPP PARA O ESTABELECIMENTO ---
-                num_dono_limpo = re.sub(r'\D', '', str(telefone_dono_param))
+                num_dono_limpo = re.sub(r'\D', '', str(telefone_dono_final))
                 if num_dono_limpo and not num_dono_limpo.startswith("55") and len(num_dono_limpo) in [10, 11]:
                     num_dono_limpo = f"55{num_dono_limpo}"
 
