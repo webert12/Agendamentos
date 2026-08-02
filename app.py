@@ -55,20 +55,20 @@ HORARIOS_DISPONIVEIS = [
 
 # --- 4. FUNÇÃO PARA FORMATAR WHATSAPP NO PADRÃO INTERNACIONAL ---
 def formatar_whatsapp_dono(numero_bruto):
-    """Limpa e formata o número do dono para garantir abertura direta do chat."""
+    """Limpa e formata o número do dono para garantir abertura direta no WhatsApp."""
     if not numero_bruto:
         return ""
     
-    # Mantém apenas os números
+    # Remove tudo que não for número
     num_limpo = re.sub(r'\D', '', str(numero_bruto))
+    
+    # Remove zeros à esquerda
+    num_limpo = num_limpo.lstrip('0')
     
     if not num_limpo:
         return ""
         
-    # Remove zeros iniciais se houver (ex: 08199999999 -> 8199999999)
-    num_limpo = num_limpo.lstrip('0')
-    
-    # Se o número tiver DDD + número (10 ou 11 dígitos), insere o DDI 55 do Brasil
+    # Se o número tem DDD + Telefone (10 ou 11 dígitos), adiciona o DDI 55 (Brasil)
     if len(num_limpo) in [10, 11]:
         num_limpo = f"55{num_limpo}"
         
@@ -76,19 +76,20 @@ def formatar_whatsapp_dono(numero_bruto):
 
 # --- 5. FUNÇÕES DE BANCO DE DADOS ---
 def buscar_dados_salao(salao_id):
-    """Busca os serviços e o WhatsApp do salão cadastrado no Supabase/PostgreSQL."""
+    """Busca os serviços e o WhatsApp do salão cadastrado na tabela 'usuarios'."""
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
     servicos = {}
     whatsapp = ""
     
     try:
         with engine.connect() as conn:
-            # 1. Busca o WhatsApp do salão na tabela de usuários
+            # 1. Busca o WhatsApp limpando espaços extras no banco
             res_user = conn.execute(
                 text("""
                     SELECT whatsapp 
                     FROM usuarios 
-                    WHERE LOWER(usuario_id) = :user OR LOWER(usuario) = :user 
+                    WHERE LOWER(TRIM(usuario_id)) = :user 
+                       OR LOWER(TRIM(usuario)) = :user 
                     LIMIT 1
                 """), 
                 {"user": salao_clean}
@@ -102,7 +103,8 @@ def buscar_dados_salao(salao_id):
                 text("""
                     SELECT nome, preco 
                     FROM servicos 
-                    WHERE LOWER(usuario_id) = :user OR LOWER(usuario) = :user 
+                    WHERE LOWER(TRIM(usuario_id)) = :user 
+                       OR LOWER(TRIM(usuario)) = :user 
                     ORDER BY nome ASC
                 """), 
                 {"user": salao_clean}
@@ -111,16 +113,7 @@ def buscar_dados_salao(salao_id):
             if rows:
                 servicos = {row[0]: float(row[1]) for row in rows}
     except Exception:
-        try:
-            with engine.connect() as conn:
-                res_user = conn.execute(
-                    text("SELECT whatsapp FROM usuarios WHERE LOWER(usuario_id) = :user OR LOWER(usuario) = :user"), 
-                    {"user": salao_clean}
-                ).fetchone()
-                if res_user and res_user[0]:
-                    whatsapp = str(res_user[0])
-        except Exception:
-            pass
+        pass
 
     # Fallback caso não existam serviços cadastrados ainda
     if not servicos:
@@ -133,7 +126,7 @@ def buscar_horarios_ocupados(salao_id, data_str):
     try:
         with engine.connect() as conn:
             result = conn.execute(
-                text("SELECT hora FROM agendamentos WHERE LOWER(usuario_id) = :user AND data = :dt"), 
+                text("SELECT hora FROM agendamentos WHERE LOWER(TRIM(usuario_id)) = :user AND data = :dt"), 
                 {"user": salao_clean, "dt": data_str}
             )
             ocupados = []
@@ -186,17 +179,24 @@ def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, da
 
 # --- 6. PARÂMETROS DA URL E IDENTIFICAÇÃO DO SALÃO ---
 query_params = st.query_params
-salao_param = query_params.get("salao", "padrao")
-telefone_dono_param = query_params.get("whats", os.getenv("TELEFONE_DONO", ""))
 
-salao_id_clean = urllib.parse.unquote(str(salao_param)).strip().lower()
+# Tratamento para garantir extração correta se o retorno for lista ou string
+salao_raw = query_params.get("salao", "padrao")
+if isinstance(salao_raw, list):
+    salao_raw = salao_raw[0] if salao_raw else "padrao"
+
+whats_raw = query_params.get("whats", os.getenv("TELEFONE_DONO", ""))
+if isinstance(whats_raw, list):
+    whats_raw = whats_raw[0] if whats_raw else ""
+
+salao_id_clean = urllib.parse.unquote(str(salao_raw)).strip().lower()
 nome_salao_formatado = salao_id_clean.replace('_', ' ').replace('-', ' ').title()
 
-# Busca os serviços e o WhatsApp cadastrado diretamente no Supabase
+# Busca os serviços e o WhatsApp cadastrado diretamente no banco
 servicos_disponiveis, whatsapp_banco = buscar_dados_salao(salao_id_clean)
 
-# Prioriza o WhatsApp do banco de dados (cadastrado pelo ADM); se não houver, utiliza a URL/Env
-telefone_dono_bruto = whatsapp_banco if whatsapp_banco else telefone_dono_param
+# Prioriza o WhatsApp do banco; se não houver, utiliza o da URL/Env
+telefone_dono_bruto = whatsapp_banco if whatsapp_banco else whats_raw
 telefone_dono_final = formatar_whatsapp_dono(telefone_dono_bruto)
 
 # --- 7. INTERFACE DE AGENDAMENTO DO CLIENTE ---
@@ -208,7 +208,7 @@ agora_br = datetime.now(TZ_BR)
 hoje_str = agora_br.strftime("%Y-%m-%d")
 hora_atual_str = agora_br.strftime("%H:%M")
 
-# --- SELEÇÃO DE DATA FORA DO FORMULÁRIO PARA ATUALIZAÇÃO INSTANTÂNEA ---
+# --- SELEÇÃO DE DATA FORA DO FORMULÁRIO ---
 data_escolhida = st.date_input("Escolha o Dia do Agendamento:", min_value=agora_br.date())
 data_str = data_escolhida.strftime("%Y-%m-%d")
 
@@ -306,12 +306,12 @@ if enviar:
                 )
                 msg_encoded = urllib.parse.quote(msg_whatsapp)
 
-                # Monta o link direcionando EXATAMENTE para o número cadastrado do salão
+                # Monta a URL wa.me com o número formatado
                 if telefone_dono_final:
-                    link_wa = f"https://api.whatsapp.com/send?phone={telefone_dono_final}&text={msg_encoded}"
+                    link_wa = f"https://wa.me/{telefone_dono_final}?text={msg_encoded}"
                 else:
-                    # Fallback caso o dono não tenha nenhum WhatsApp cadastrado no banco ainda
-                    link_wa = f"https://api.whatsapp.com/send?text={msg_encoded}"
+                    link_wa = f"https://wa.me/?text={msg_encoded}"
+                    st.warning("⚠️ **Aviso ao Administrador:** O WhatsApp deste salão não foi localizado na tabela 'usuarios'. Verifique se o ID ou Login do usuário corresponde exatamente a 'maicon'.")
 
                 # --- BOTÃO DE CONFIRMAÇÃO DIRETA DO WHATSAPP ---
                 html_botao = f"""<div style="background-color: #f0fdf4; border: 2px solid #25D366; border-radius: 12px; padding: 18px; text-align: center; margin-top: 20px; margin-bottom: 20px;">
