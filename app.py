@@ -274,54 +274,21 @@ if enviar:
                 else:
                     link_wa = f"https://wa.me/?text={msg_encoded}"
 
-                # --- CARD E BOTÃO PERSONALIZADO DO WHATSAPP (VERDE OFICIAL + ÍCONE SVG) ---
-                st.markdown(
-                    f"""
-                    <div style="
-                        background-color: #f0fdf4;
-                        border: 2px solid #25D366;
-                        border-radius: 12px;
-                        padding: 18px;
-                        text-align: center;
-                        margin-top: 20px;
-                        margin-bottom: 20px;
-                    ">
-                        <p style="
-                            color: #166534; 
-                            font-size: 16px; 
-                            font-weight: 600; 
-                            margin-bottom: 12px;
-                        ">
-                            ⚠️ <b>ÚLTIMO PASSO:</b> Clique no botão abaixo para enviar o comprovante direto para o WhatsApp do estabelecimento e confirmar seu horário.
-                        </p>
-                        
-                        <a href="{link_wa}" target="_blank" style="text-decoration: none;">
-                            <div style="
-                                background-color: #25D366;
-                                color: #FFFFFF;
-                                padding: 14px 20px;
-                                border-radius: 10px;
-                                text-align: center;
-                                font-weight: bold;
-                                font-size: 18px;
-                                box-shadow: 0px 4px 12px rgba(37, 211, 102, 0.45);
-                                display: flex;
-                                align-items: center;
-                                justify-content: center;
-                                gap: 10px;
-                                cursor: pointer;
-                            ">
-                                <svg width="26" height="26" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"/>
-                                    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.119.553 4.11 1.519 5.84L0 24l6.335-1.652C8.016 23.284 9.948 23.858 12 23.858c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.802 0-3.567-.484-5.116-1.403l-.367-.218-3.799.992 1.012-3.702-.24-.38C2.536 15.542 2.02 13.808 2.02 12c0-5.503 4.477-9.98 9.98-9.98 5.503 0 9.98 4.477 9.98 9.98 0 5.503-4.477 9.982-9.98 9.982z"/>
-                                </svg>
-                                <span>Confirmar Agendamento no WhatsApp</span>
-                            </div>
-                        </a>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                # --- HTML ALINHADO À ESQUERDA PARA EVITAR MODO DE CÓDIGO NO STREAMLIT ---
+                html_botao = f"""<div style="background-color: #f0fdf4; border: 2px solid #25D366; border-radius: 12px; padding: 18px; text-align: center; margin-top: 20px; margin-bottom: 20px;">
+<p style="color: #166534; font-size: 16px; font-weight: 600; margin-bottom: 12px;">⚠️ <b>ÚLTIMO PASSO:</b> Clique no botão abaixo para enviar a confirmação direta para o WhatsApp do salão.</p>
+<a href="{link_wa}" target="_blank" style="text-decoration: none;">
+<div style="background-color: #25D366; color: #FFFFFF; padding: 14px 20px; border-radius: 10px; text-align: center; font-weight: bold; font-size: 18px; box-shadow: 0px 4px 12px rgba(37, 211, 102, 0.45); display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;">
+<svg width="26" height="26" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg">
+<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"/>
+<path d="M12 0C5.373 0 0 5.373 0 12c0 2.119.553 4.11 1.519 5.84L0 24l6.335-1.652C8.016 23.284 9.948 23.858 12 23.858c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.802 0-3.567-.484-5.116-1.403l-.367-.218-3.799.992 1.012-3.702-.24-.38C2.536 15.542 2.02 13.808 2.02 12c0-5.503 4.477-9.98 9.98-9.98 5.503 0 9.98 4.477 9.98 9.98 0 5.503-4.477 9.982-9.98 9.982z"/>
+</svg>
+<span>Confirmar Agendamento no WhatsApp</span>
+</div>
+</a>
+</div>"""
+
+                st.markdown(html_botao, unsafe_allow_html=True)
                 
             except Exception as e:
                 st.error(f"Ocorreu um erro ao salvar o agendamento: {e}")
