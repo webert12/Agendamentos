@@ -92,7 +92,7 @@ if not DB_URL:
 
 @st.cache_resource
 def init_connection(url):
-    return create_engine(url, pool_pre_ping=True)
+    return create_engine(url, pool_pre_ping=True, pool_recycle=300)
 
 try:
     engine = init_connection(DB_URL)
@@ -107,7 +107,7 @@ HORARIOS_DISPONIVEIS = [
     "17:00", "18:00", "19:00"
 ]
 
-# --- 4. FUNÇÕES DE BANCO DE DADOS (ORIGINAIS E LIMPAS) ---
+# --- 4. FUNÇÕES DE BANCO DE DADOS ---
 def carregar_servicos_salao(salao_id):
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
     try:
@@ -122,7 +122,6 @@ def carregar_servicos_salao(salao_id):
     except Exception:
         pass
         
-    # Fallback padrão caso o banco esteja vazio
     return {
         "Corte de Cabelo": {"preco": 25.00, "duracao": 30},
         "Barba": {"preco": 25.00, "duracao": 30},
@@ -147,19 +146,26 @@ def buscar_horarios_ocupados(salao_id, data_str):
 
 def salvar_agendamento(salao_id, cliente_nome, cliente_telefone, servico_nome, data_str, hora):
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
-    
-    # Remove formatações do telefone para salvar limpo no banco
     telefone_clean = re.sub(r'\D', '', cliente_telefone)
 
-    with engine.begin() as conn:
-        conn.execute(
-            text("""
-            INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
-            VALUES (:user, :nome, :telefone, :servico, :data, :hora)
-            """),
-            {"user": salao_clean, "nome": cliente_nome.strip(), "telefone": telefone_clean, 
-             "servico": servico_nome, "data": data_str, "hora": hora}
-        )
+    for tentativa in range(2):
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("""
+                    INSERT INTO agendamentos (usuario_id, cliente_nome, cliente_contato, servico_nome, data, hora)
+                    VALUES (:user, :nome, :telefone, :servico, :data, :hora)
+                    """),
+                    {"user": salao_clean, "nome": cliente_nome.strip(), "telefone": telefone_clean, 
+                     "servico": servico_nome, "data": data_str, "hora": hora}
+                )
+            return
+        except Exception as e:
+            if tentativa == 0:
+                st.cache_resource.clear()
+                continue
+            else:
+                raise e
 
 # --- 5. PARÂMETROS DA URL E IDENTIFICAÇÃO DO SALÃO ---
 query_params = st.query_params
@@ -200,11 +206,9 @@ ocupados = buscar_horarios_ocupados(salao_id_clean, data_str)
 opcoes_horario = ["-- Selecione o Horário --"]
 
 for h in HORARIOS_DISPONIVEIS:
-    # Pula horários que já passaram hoje
     if data_str == hoje_str and h <= hora_atual_str:
         continue
         
-    # Adiciona apenas se o horário estiver livre
     if h not in ocupados:
         opcoes_horario.append(h)
 
@@ -247,7 +251,6 @@ if enviar:
             )
             st.balloons()
             
-            # Gera link do WhatsApp (O cliente clica e envia mensagem para o salão)
             texto_wa = urllib.parse.quote(f"Olá! Acabei de agendar um(a) {servico_escolhido} para o dia {data_escolhida.strftime('%d/%m/%Y')} às {horario_selecionado}. Meu nome é {nome_cliente}.")
             link_wa = f"https://wa.me/?text={texto_wa}"
             
