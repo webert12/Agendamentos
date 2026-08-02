@@ -53,7 +53,7 @@ HORARIOS_DISPONIVEIS = [
     "18:00", "18:30", "19:00"
 ]
 
-# --- 4. FUNÇÃO PARA FORMATAR WHATSAPP NO PADRÃO INTERNACIONAL ---
+# --- 4. FUNÇÕES DE SUPORTE E FORMATADORES ---
 def formatar_whatsapp_dono(numero_bruto):
     """Limpa e formata o número do dono para garantir abertura direta no WhatsApp."""
     if not numero_bruto:
@@ -69,73 +69,109 @@ def formatar_whatsapp_dono(numero_bruto):
         
     return num_limpo
 
-# --- 5. FUNÇÃO DINÂMICA DE BUSCA NO BANCO DE DADOS ---
+def obter_colunas_tabela(tabela_nome):
+    """Retorna a lista de colunas reais existentes em uma tabela do banco de dados."""
+    try:
+        with engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_name = :tbl"),
+                {"tbl": tabela_nome}
+            ).fetchall()
+            return [r[0].lower() for r in res]
+    except Exception:
+        return []
+
+# --- 5. BUSCA INTELIGENTE E DINÂMICA DO SALÃO ---
 def buscar_dados_salao(salao_id):
-    """Busca serviços e WhatsApp do salão informado no parâmetro da URL."""
+    """Busca os serviços e o telefone do salão cadastrado, adaptando-se às colunas reais do banco."""
     if not salao_id:
         return {}, ""
 
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
+    # Remove qualquer caractere especial para permitir buscas ultra-flexíveis
+    salao_busca_normalizada = re.sub(r'[^a-z0-9]', '', salao_clean)
+
     servicos = {}
     whatsapp = ""
-    
-    try:
-        with engine.connect() as conn:
-            # 1. Busca ampla do WhatsApp na tabela 'usuarios'
-            res_user = conn.execute(
-                text("""
-                    SELECT whatsapp 
-                    FROM usuarios 
-                    WHERE LOWER(TRIM(COALESCE(usuario_id, ''))) = :user 
-                       OR LOWER(TRIM(COALESCE(usuario, ''))) = :user 
-                       OR LOWER(TRIM(COALESCE(login, ''))) = :user 
-                       OR LOWER(TRIM(COALESCE(nome_salao, ''))) = :user
-                    LIMIT 1
-                """), 
-                {"user": salao_clean}
-            ).fetchone()
-            
-            if res_user and res_user[0]:
-                whatsapp = str(res_user[0])
 
-            # 2. Busca os serviços cadastrados do salão
-            res_serv = conn.execute(
-                text("""
-                    SELECT nome, preco 
-                    FROM servicos 
-                    WHERE LOWER(TRIM(COALESCE(usuario_id, ''))) = :user 
-                       OR LOWER(TRIM(COALESCE(usuario, ''))) = :user 
-                       OR LOWER(TRIM(COALESCE(login, ''))) = :user 
-                       OR LOWER(TRIM(COALESCE(nome_salao, ''))) = :user
-                    ORDER BY nome ASC
-                """), 
-                {"user": salao_clean}
-            )
-            rows = res_serv.fetchall()
-            if rows:
-                servicos = {row[0]: float(row[1]) for row in rows}
-    except Exception:
-        pass
+    # 1. Identifica colunas existentes na tabela 'usuarios'
+    cols_usuarios = obter_colunas_tabela("usuarios")
 
-    # Fallback caso não existam serviços cadastrados ainda para este salão
+    # Descobre a coluna correta de telefone/whatsapp
+    col_telefone = None
+    for c in ["whatsapp", "telefone", "celular", "contato", "zap", "phone"]:
+        if c in cols_usuarios:
+            col_telefone = c
+            break
+
+    # Descobre as colunas válidas de identificação do salão
+    cols_id = [c for c in ["usuario_id", "usuario", "login", "username", "nome_salao", "nome", "slug", "email", "id"] if c in cols_usuarios]
+
+    if col_telefone and cols_id:
+        # Monta cláusula WHERE dinâmica apenas com colunas existentes
+        condicoes = []
+        for col in cols_id:
+            condicoes.append(f"REPLACE(REPLACE(REPLACE(LOWER(TRIM(COALESCE({col}::text, ''))), '_', ''), '-', ''), ' ', '') = :busca")
+            condicoes.append(f"LOWER(TRIM(COALESCE({col}::text, ''))) = :raw")
+
+        sql_user = f"SELECT {col_telefone} FROM usuarios WHERE {' OR '.join(condicoes)} LIMIT 1"
+
+        try:
+            with engine.connect() as conn:
+                res = conn.execute(text(sql_user), {"busca": salao_busca_normalizada, "raw": salao_clean}).fetchone()
+                if res and res[0]:
+                    whatsapp = str(res[0])
+        except Exception:
+            pass
+
+        # Fallback de busca parcial com LIKE caso a correspondência exata falhe
+        if not whatsapp:
+            condicoes_like = [f"LOWER({col}::text) LIKE :like" for col in cols_id]
+            sql_like = f"SELECT {col_telefone} FROM usuarios WHERE {' OR '.join(condicoes_like)} LIMIT 1"
+            try:
+                with engine.connect() as conn:
+                    res_like = conn.execute(text(sql_like), {"like": f"%{salao_busca_normalizada}%"}).fetchone()
+                    if res_like and res_like[0]:
+                        whatsapp = str(res_like[0])
+            except Exception:
+                pass
+
+    # 2. Busca os Serviços na tabela 'servicos'
+    cols_servicos = obter_colunas_tabela("servicos")
+    cols_serv_id = [c for c in ["usuario_id", "usuario", "login", "username", "nome_salao", "salao_id"] if c in cols_servicos]
+
+    if cols_servicos and "nome" in cols_servicos and "preco" in cols_servicos and cols_serv_id:
+        condicoes_serv = [f"REPLACE(REPLACE(REPLACE(LOWER(TRIM(COALESCE({c}::text, ''))), '_', ''), '-', ''), ' ', '') = :busca" for c in cols_serv_id]
+        sql_serv = f"SELECT nome, preco FROM servicos WHERE {' OR '.join(condicoes_serv)} ORDER BY nome ASC"
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(text(sql_serv), {"busca": salao_busca_normalizada}).fetchall()
+                if rows:
+                    servicos = {r[0]: float(r[1]) for r in rows}
+        except Exception:
+            pass
+
+    # Fallback padrão para serviços caso o salão recém-criado ainda não tenha cadastrado nenhum
     if not servicos:
         servicos = {"Corte de Cabelo": 25.00, "Barba": 25.00, "Combo (Corte + Barba)": 50.00}
-        
+
     return servicos, whatsapp
 
 def buscar_horarios_ocupados(salao_id, data_str):
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
+    salao_busca_normalizada = re.sub(r'[^a-z0-9]', '', salao_clean)
+    cols_agend = obter_colunas_tabela("agendamentos")
+    cols_id = [c for c in ["usuario_id", "usuario", "salao_id"] if c in cols_agend]
+
+    if not cols_id:
+        return []
+
+    condicoes = [f"REPLACE(REPLACE(REPLACE(LOWER(TRIM(COALESCE({c}::text, ''))), '_', ''), '-', ''), ' ', '') = :busca" for c in cols_id]
+    sql = f"SELECT hora FROM agendamentos WHERE ({' OR '.join(condicoes)}) AND data = :dt"
+
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text("""
-                    SELECT hora FROM agendamentos 
-                    WHERE LOWER(TRIM(COALESCE(usuario_id, ''))) = :user 
-                       OR LOWER(TRIM(COALESCE(usuario, ''))) = :user 
-                      AND data = :dt
-                """), 
-                {"user": salao_clean, "dt": data_str}
-            )
+            result = conn.execute(text(sql), {"busca": salao_busca_normalizada, "dt": data_str})
             ocupados = []
             for row in result.fetchall():
                 val = str(row[0]).strip()
@@ -184,14 +220,14 @@ def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, da
                 }
             )
 
-# --- 6. EXTRAÇÃO DINÂMICA DO SALÃO PELA URL ---
+# --- 6. EXTRAÇÃO DINÂMICA DO PARÂMETRO DA URL ---
 query_params = st.query_params
 
 salao_raw = query_params.get("salao", None)
 if isinstance(salao_raw, list):
     salao_raw = salao_raw[0] if salao_raw else None
 
-# Se a URL não tiver o parâmetro do salão, exige o link completo
+# Se o link não tiver o parâmetro do salão
 if not salao_raw:
     st.error("❌ **Link incompleto!** Por favor, acesse o sistema através do link exclusivo do seu salão.")
     st.info("Exemplo de link correto: `https://seu-sistema.com/?salao=nome_do_salao`")
@@ -200,10 +236,10 @@ if not salao_raw:
 salao_id_clean = urllib.parse.unquote(str(salao_raw)).strip().lower()
 nome_salao_formatado = salao_id_clean.replace('_', ' ').replace('-', ' ').title()
 
-# Busca dinâmica no banco de dados para o salão da URL
+# Consulta os dados reais do salão no banco
 servicos_disponiveis, whatsapp_banco = buscar_dados_salao(salao_id_clean)
 
-# Formata o número do WhatsApp retornado pelo banco
+# Formata o telefone retornado do banco
 telefone_dono_final = formatar_whatsapp_dono(whatsapp_banco)
 
 # --- 7. INTERFACE DE AGENDAMENTO ---
@@ -214,11 +250,9 @@ agora_br = datetime.now(TZ_BR)
 hoje_str = agora_br.strftime("%Y-%m-%d")
 hora_atual_str = agora_br.strftime("%H:%M")
 
-# Seleção da Data
 data_escolhida = st.date_input("Escolha o Dia do Agendamento:", min_value=agora_br.date())
 data_str = data_escolhida.strftime("%Y-%m-%d")
 
-# Consulta horários ocupados para o salão dinâmico
 ocupados = buscar_horarios_ocupados(salao_id_clean, data_str)
 
 opcoes_horario = ["-- Selecione o Horário --"]
@@ -233,7 +267,6 @@ for h in HORARIOS_DISPONIVEIS:
     else:
         opcoes_horario.append(f"🟢 {h} - (DISPONÍVEL)")
 
-# Formulário do Cliente
 with st.form("form_agendamento_cliente", clear_on_submit=True):
     nome_cliente = st.text_input("Seu Nome Completo:")
     telefone_cliente = st.text_input("Seu WhatsApp (com DDD):")
@@ -309,14 +342,12 @@ if enviar:
                 )
                 msg_encoded = urllib.parse.quote(msg_whatsapp)
 
-                # Monta a URL de direcionamento direta para o WhatsApp retornado do banco
                 if telefone_dono_final:
                     link_wa = f"https://wa.me/{telefone_dono_final}?text={msg_encoded}"
                 else:
                     link_wa = f"https://wa.me/?text={msg_encoded}"
                     st.warning(f"⚠️ **Aviso ao Administrador:** O WhatsApp do salão **'{salao_id_clean}'** não foi encontrado no banco de dados. Verifique se o cadastro no painel possui o mesmo identificador da URL.")
 
-                # Botão de envio direto
                 html_botao = f"""<div style="background-color: #f0fdf4; border: 2px solid #25D366; border-radius: 12px; padding: 18px; text-align: center; margin-top: 20px; margin-bottom: 20px;">
 <p style="color: #166534; font-size: 16px; font-weight: 600; margin-bottom: 12px;">⚠️ <b>ÚLTIMO PASSO:</b> Clique no botão abaixo para enviar a confirmação direta para o WhatsApp do salão.</p>
 <a href="{link_wa}" target="_blank" style="text-decoration: none;">
