@@ -1,10 +1,11 @@
 import os
-import streamlit as st
-import pandas as pd
+import re
+import urllib.parse
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import pandas as pd
+import streamlit as st
 from sqlalchemy import create_engine, text
-import urllib.parse
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA E FUSO HORÁRIO (BRASÍLIA) ---
 st.set_page_config(page_title="Agendamento Online", page_icon="✂️", layout="centered")
@@ -129,6 +130,8 @@ def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, da
 # --- 5. PARÂMETROS DA URL E IDENTIFICAÇÃO DO SALÃO ---
 query_params = st.query_params
 salao_param = query_params.get("salao", "padrao")
+telefone_dono_param = query_params.get("whats", os.getenv("TELEFONE_DONO", ""))
+
 salao_id_clean = urllib.parse.unquote(str(salao_param)).strip().lower()
 nome_salao_formatado = salao_id_clean.replace('_', ' ').replace('-', ' ').title()
 
@@ -217,11 +220,54 @@ if enviar:
                     hora=hora_limpa
                 )
                 
-                st.success(f"🎉 Agendamento confirmado com sucesso, {nome_cliente}!")
-                st.balloons()
-                st.info(
-                    f"📅 **Data:** {data_escolhida.strftime('%d/%m/%Y')} às **{hora_limpa}**\n\n"
-                    f"✂️ **Serviço:** {servico_escolhido}"
+                # --- MENSAGEM PROFISSIONAL DE CONFIRMAÇÃO ---
+                data_formatada = data_escolhida.strftime("%d/%m/%Y")
+                
+                st.success("✅ **Agendamento confirmado com sucesso!**")
+                
+                st.markdown(
+                    f"""
+                    ### 📅 Detalhes do Agendamento
+                    * **Cliente:** {nome_cliente}
+                    * **Data:** {data_formatada}
+                    * **Horário:** {hora_limpa}
+                    * **Serviço:** {servico_escolhido}
+                    
+                    ---
+                    """
                 )
+                
+                # --- ENVIAR NOTIFICAÇÃO VIA WHATSAPP PARA O ESTABELECIMENTO ---
+                # Trata o número do dono para garantir o formato internacional (+55...)
+                num_dono_limpo = re.sub(r'\D', '', str(telefone_dono_param))
+                if num_dono_limpo and not num_dono_limpo.startswith("55") and len(num_dono_limpo) in [10, 11]:
+                    num_dono_limpo = f"55{num_dono_limpo}"
+
+                # Cria a mensagem pronta para envio no WhatsApp
+                msg_whatsapp = (
+                    f"Olá! Acabei de realizar um agendamento pelo site.\n\n"
+                    f"👤 *Cliente:* {nome_cliente}\n"
+                    f"📅 *Data:* {data_formatada}\n"
+                    f"⏰ *Horário:* {hora_limpa}\n"
+                    f"✂️ *Serviço:* {servico_escolhido}"
+                )
+                msg_encoded = urllib.parse.quote(msg_whatsapp)
+
+                if num_dono_limpo:
+                    link_wa = f"https://wa.me/{num_dono_limpo}?text={msg_encoded}"
+                    st.link_button(
+                        "📲 Enviar confirmação via WhatsApp para o Estabelecimento", 
+                        link_wa, 
+                        use_container_width=True
+                    )
+                else:
+                    # Link padrão caso o número do salão não esteja configurado na URL
+                    link_wa_generico = f"https://wa.me/?text={msg_encoded}"
+                    st.link_button(
+                        "📲 Enviar detalhes do Agendamento no WhatsApp", 
+                        link_wa_generico, 
+                        use_container_width=True
+                    )
+                
             except Exception as e:
                 st.error(f"Ocorreu um erro ao salvar o agendamento: {e}")
