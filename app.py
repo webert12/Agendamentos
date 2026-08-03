@@ -8,13 +8,18 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA E FUSO HORÁRIO (BRASÍLIA) ---
-st.set_page_config(page_title="Agendamento Online", page_icon="✂️", layout="centered")
+st.set_page_config(page_title="Agendamento Online", page_icon="💈", layout="centered")
 TZ_BR = ZoneInfo("America/Sao_Paulo")
 
-# --- CUSTOM CSS (ESTILIZAÇÃO PREMIUM) ---
+# --- CUSTOM CSS (ESTILIZAÇÃO PREMIUM CORRIGIDA) ---
 st.markdown("""
 <style>
-    /* Estilo Global e Fundo */
+    /* Estilo Global e Prevenção de Quebras de Texto */
+    * {
+        word-break: keep-all !important;
+        hyphens: none !important;
+    }
+
     .stApp {
         background: linear-gradient(135deg, #0f1117 0%, #161922 100%);
         color: #f3f4f6;
@@ -31,23 +36,25 @@ st.markdown("""
         background: linear-gradient(135deg, #1e2230 0%, #12141d 100%);
         border: 1px solid #2e3446;
         border-radius: 16px;
-        padding: 28px 20px;
+        padding: 28px 15px;
         text-align: center;
         margin-bottom: 25px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
     }
 
+    /* Título Responsivo sem Quebra de Palavras */
     .hero-title {
-        font-size: 28px;
+        font-size: clamp(20px, 5vw, 30px) !important;
         font-weight: 800;
         color: #ffffff;
         margin: 0;
-        letter-spacing: -0.5px;
+        letter-spacing: 0px;
+        white-space: nowrap;
     }
 
     .hero-subtitle {
         color: #9ca3af;
-        font-size: 15px;
+        font-size: 14px;
         margin-top: 6px;
     }
 
@@ -56,19 +63,19 @@ st.markdown("""
         background: linear-gradient(90deg, #d4af37 0%, #f3e5ab 100%);
         color: #12141d;
         font-weight: 800;
-        padding: 4px 16px;
+        padding: 6px 18px;
         border-radius: 20px;
-        font-size: 14px;
+        font-size: 13px;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-top: 10px;
+        letter-spacing: 0.5px;
+        margin-top: 12px;
     }
 
     /* Estilização das Abas (Tabs) */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
+        gap: 8px;
         background-color: #12141d;
-        padding: 8px;
+        padding: 6px;
         border-radius: 12px;
         border: 1px solid #2e3446;
     }
@@ -80,6 +87,7 @@ st.markdown("""
         font-weight: 600;
         background-color: transparent;
         border: none;
+        font-size: 14px;
     }
 
     .stTabs [aria-selected="true"] {
@@ -108,10 +116,10 @@ st.markdown("""
         background: linear-gradient(90deg, #d4af37 0%, #b38f28 100%) !important;
         color: #12141d !important;
         font-weight: 700 !important;
-        font-size: 16px !important;
+        font-size: 15px !important;
         border: none !important;
         border-radius: 10px !important;
-        padding: 12px 24px !important;
+        padding: 12px 20px !important;
         transition: all 0.3s ease !important;
         box-shadow: 0 4px 15px rgba(212, 175, 55, 0.25) !important;
     }
@@ -121,7 +129,7 @@ st.markdown("""
         box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4) !important;
     }
 
-    /* Card de Agendamento Encontrado (Aba Cancelar) */
+    /* Card de Agendamento Encontrado */
     .booking-card {
         background-color: #1a1d28;
         border: 1px solid #2e3446;
@@ -418,7 +426,7 @@ telefone_dono_final = formatar_whatsapp_dono(whatsapp_banco)
 # --- HERO BANNER (CABEÇALHO PERSONALIZADO) ---
 st.markdown(f"""
 <div class="hero-header">
-    <div style="font-size: 36px; margin-bottom: 8px;">✂️</div>
+    <div style="font-size: 36px; margin-bottom: 8px;">💈</div>
     <h1 class="hero-title">AGENDAMENTO ONLINE</h1>
     <div class="hero-subtitle">Reserve seu horário de forma rápida e prática</div>
     <div class="salao-badge">💈 {nome_salao_formatado}</div>
@@ -426,7 +434,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # --- 7. INTERFACE PRINCIPAL NAVEGÁVEL EM ABAS ---
-tab_agendar, tab_cancelar = st.tabs(["📅 NOVO AGENDAMENTO", "❌ MEUS AGENDAMENTOS / CANCELAR"])
+tab_agendar, tab_cancelar = st.tabs(["📅 NOVO AGENDAMENTO", "❌ CANCELAR AGENDAMENTO"])
 
 # ==========================================
 # ABA 1: NOVO AGENDAMENTO
@@ -465,7 +473,7 @@ with tab_agendar:
             servico_escolhido = st.selectbox(
                 "Escolha o Serviço Desejado:", 
                 options=list(servicos_disponiveis.keys()),
-                format_func=lambda x: f"✂️ {x} — R$ {servicos_disponiveis[x]:.2f}"
+                format_func=lambda x: f"💈 {x} — R$ {servicos_disponiveis[x]:.2f}"
             )
         else:
             st.warning("Nenhum serviço disponível no momento.")
@@ -521,7 +529,7 @@ with tab_agendar:
                             <p style="color: #ffffff; font-size: 16px;"><b>👤 Cliente:</b> {nome_cliente}</p>
                             <p style="color: #ffffff; font-size: 16px;"><b>📅 Data:</b> {data_formatada}</p>
                             <p style="color: #ffffff; font-size: 16px;"><b>⏰ Horário:</b> {hora_limpa}</p>
-                            <p style="color: #ffffff; font-size: 16px;"><b>✂️ Serviço:</b> {servico_escolhido}</p>
+                            <p style="color: #ffffff; font-size: 16px;"><b>💈 Serviço:</b> {servico_escolhido}</p>
                         </div>
                         """, 
                         unsafe_allow_html=True
@@ -532,7 +540,7 @@ with tab_agendar:
                         f"👤 *Cliente:* {nome_cliente}\n"
                         f"📅 *Data:* {data_formatada}\n"
                         f"⏰ *Horário:* {hora_limpa}\n"
-                        f"✂️ *Serviço:* {servico_escolhido}"
+                        f"💈 *Serviço:* {servico_escolhido}"
                     )
                     msg_encoded = urllib.parse.quote(msg_whatsapp)
 
@@ -583,7 +591,7 @@ with tab_cancelar:
                 
                 st.markdown(f"""
                 <div class="booking-card">
-                    <div class="booking-card-header">✂️ {servico_n}</div>
+                    <div class="booking-card-header">💈 {servico_n}</div>
                     <div class="booking-card-detail">👤 <b>Cliente:</b> {cliente_n}</div>
                     <div class="booking-card-detail">📅 <b>Data:</b> {data_formatada}</div>
                     <div class="booking-card-detail">⏰ <b>Horário:</b> {hora_ag}</div>
