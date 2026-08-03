@@ -11,6 +11,141 @@ from sqlalchemy import create_engine, text
 st.set_page_config(page_title="Agendamento Online", page_icon="✂️", layout="centered")
 TZ_BR = ZoneInfo("America/Sao_Paulo")
 
+# --- CUSTOM CSS (ESTILIZAÇÃO PREMIUM) ---
+st.markdown("""
+<style>
+    /* Estilo Global e Fundo */
+    .stApp {
+        background: linear-gradient(135deg, #0f1117 0%, #161922 100%);
+        color: #f3f4f6;
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Esconde elementos padrão do Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* Card do Cabeçalho (Hero) */
+    .hero-header {
+        background: linear-gradient(135deg, #1e2230 0%, #12141d 100%);
+        border: 1px solid #2e3446;
+        border-radius: 16px;
+        padding: 28px 20px;
+        text-align: center;
+        margin-bottom: 25px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .hero-title {
+        font-size: 28px;
+        font-weight: 800;
+        color: #ffffff;
+        margin: 0;
+        letter-spacing: -0.5px;
+    }
+
+    .hero-subtitle {
+        color: #9ca3af;
+        font-size: 15px;
+        margin-top: 6px;
+    }
+
+    .salao-badge {
+        display: inline-block;
+        background: linear-gradient(90deg, #d4af37 0%, #f3e5ab 100%);
+        color: #12141d;
+        font-weight: 800;
+        padding: 4px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-top: 10px;
+    }
+
+    /* Estilização das Abas (Tabs) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background-color: #12141d;
+        padding: 8px;
+        border-radius: 12px;
+        border: 1px solid #2e3446;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 48px;
+        border-radius: 8px;
+        color: #9ca3af;
+        font-weight: 600;
+        background-color: transparent;
+        border: none;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: #252a3a !important;
+        color: #d4af37 !important;
+        border: 1px solid #d4af37 !important;
+        box-shadow: 0 4px 12px rgba(212, 175, 55, 0.15);
+    }
+
+    /* Inputs e Selects Customizados */
+    .stTextInput > div > div > input, .stSelectbox > div > div > div {
+        background-color: #1a1d28 !important;
+        color: #ffffff !important;
+        border: 1px solid #374151 !important;
+        border-radius: 10px !important;
+        padding: 10px !important;
+    }
+
+    .stTextInput > div > div > input:focus, .stSelectbox > div > div > div:focus {
+        border-color: #d4af37 !important;
+        box-shadow: 0 0 8px rgba(212, 175, 55, 0.3) !important;
+    }
+
+    /* Botões Principais */
+    .stButton > button {
+        background: linear-gradient(90deg, #d4af37 0%, #b38f28 100%) !important;
+        color: #12141d !important;
+        font-weight: 700 !important;
+        font-size: 16px !important;
+        border: none !important;
+        border-radius: 10px !important;
+        padding: 12px 24px !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(212, 175, 55, 0.25) !important;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4) !important;
+    }
+
+    /* Card de Agendamento Encontrado (Aba Cancelar) */
+    .booking-card {
+        background-color: #1a1d28;
+        border: 1px solid #2e3446;
+        border-left: 5px solid #d4af37;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 15px;
+    }
+
+    .booking-card-header {
+        font-size: 18px;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 8px;
+    }
+
+    .booking-card-detail {
+        font-size: 14px;
+        color: #9ca3af;
+        margin-bottom: 4px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # --- 2. CONEXÃO COM O BANCO DE DADOS POSTGRESQL ---
 DB_URL = os.getenv("DB_URL")
 
@@ -212,7 +347,6 @@ def salvar_agendamento(salao_id, cliente_nome, cliente_contato, servico_nome, da
                 }
             )
 
-# --- NOVAS FUNÇÕES PARA O CANCELAMENTO DE AGENDAMENTOS ---
 def buscar_agendamentos_cliente(salao_id, contato_cliente):
     """Busca agendamentos ativos a partir do WhatsApp informado pelo cliente."""
     salao_clean = urllib.parse.unquote(str(salao_id)).strip().lower()
@@ -232,7 +366,6 @@ def buscar_agendamentos_cliente(salao_id, contato_cliente):
     agora_br = datetime.now(TZ_BR)
     hoje_str = agora_br.strftime("%Y-%m-%d")
 
-    # Tenta buscar os campos principais
     sql = f"""
         SELECT id, cliente_nome, servico_nome, data, hora 
         FROM agendamentos 
@@ -279,15 +412,21 @@ if not salao_raw:
 salao_id_clean = urllib.parse.unquote(str(salao_raw)).strip().lower()
 nome_salao_formatado = salao_id_clean.replace('_', ' ').replace('-', ' ').title()
 
-# Consulta os dados reais do salão no banco
 servicos_disponiveis, whatsapp_banco = buscar_dados_salao(salao_id_clean)
 telefone_dono_final = formatar_whatsapp_dono(whatsapp_banco)
 
-# --- 7. INTERFACE PRINCIPAL NAVEGÁVEL EM ABAS ---
-st.title("✂️ Agendamento Online")
-st.write(f"Seja bem-vindo ao sistema de agendamento de **{nome_salao_formatado}**.")
+# --- HERO BANNER (CABEÇALHO PERSONALIZADO) ---
+st.markdown(f"""
+<div class="hero-header">
+    <div style="font-size: 36px; margin-bottom: 8px;">✂️</div>
+    <h1 class="hero-title">AGENDAMENTO ONLINE</h1>
+    <div class="hero-subtitle">Reserve seu horário de forma rápida e prática</div>
+    <div class="salao-badge">💈 {nome_salao_formatado}</div>
+</div>
+""", unsafe_allow_html=True)
 
-tab_agendar, tab_cancelar = st.tabs(["📅 Novo Agendamento", "❌ Cancelar / Meus Agendamentos"])
+# --- 7. INTERFACE PRINCIPAL NAVEGÁVEL EM ABAS ---
+tab_agendar, tab_cancelar = st.tabs(["📅 NOVO AGENDAMENTO", "❌ MEUS AGENDAMENTOS / CANCELAR"])
 
 # ==========================================
 # ABA 1: NOVO AGENDAMENTO
@@ -297,7 +436,8 @@ with tab_agendar:
     hoje_str = agora_br.strftime("%Y-%m-%d")
     hora_atual_str = agora_br.strftime("%H:%M")
 
-    data_escolhida = st.date_input("Escolha o Dia do Agendamento:", min_value=agora_br.date(), key="data_agendamento")
+    st.markdown("### 1. Escolha a Data")
+    data_escolhida = st.date_input("", min_value=agora_br.date(), key="data_agendamento")
     data_str = data_escolhida.strftime("%Y-%m-%d")
 
     ocupados = buscar_horarios_ocupados(salao_id_clean, data_str)
@@ -314,15 +454,18 @@ with tab_agendar:
         else:
             opcoes_horario.append(f"🟢 {h} - (DISPONÍVEL)")
 
+    st.markdown("---")
+    st.markdown("### 2. Seus Dados e Serviço")
+
     with st.form("form_agendamento_cliente", clear_on_submit=True):
-        nome_cliente = st.text_input("Seu Nome Completo:")
-        telefone_cliente = st.text_input("Seu WhatsApp (com DDD):")
+        nome_cliente = st.text_input("Seu Nome Completo:", placeholder="Ex: João Silva")
+        telefone_cliente = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: 11999999999")
         
         if servicos_disponiveis:
             servico_escolhido = st.selectbox(
                 "Escolha o Serviço Desejado:", 
                 options=list(servicos_disponiveis.keys()),
-                format_func=lambda x: f"{x} - R$ {servicos_disponiveis[x]:.2f}"
+                format_func=lambda x: f"✂️ {x} — R$ {servicos_disponiveis[x]:.2f}"
             )
         else:
             st.warning("Nenhum serviço disponível no momento.")
@@ -333,7 +476,8 @@ with tab_agendar:
             options=opcoes_horario
         )
 
-        enviar = st.form_submit_button("Confirmar Agendamento 🚀", use_container_width=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        enviar = st.form_submit_button("CONFIRMAR AGENDAMENTO 🚀", use_container_width=True)
 
     if enviar:
         if not nome_cliente or not telefone_cliente:
@@ -347,13 +491,13 @@ with tab_agendar:
             if "HORÁRIO JÁ PASSOU" in horario_selecionado:
                 st.error(f"❌ O horário **{hora_ext}** já passou para a data selecionada. Escolha um horário futuro.")
             else:
-                st.error(f"❌ O horário **{hora_ext}** já possui uma reserva confirmada para esta data. Escolha um horário verde (🟢).")
+                st.error(f"❌ O horário **{hora_ext}** já possui uma reserva confirmada. Escolha um horário livre (🟢).")
         else:
             hora_limpa = horario_selecionado.split()[1]
             
             ocupados_agora = buscar_horarios_ocupados(salao_id_clean, data_str)
             if hora_limpa in ocupados_agora:
-                st.error(f"❌ O horário **{hora_limpa}** acabou de ser reservado nesta data por outro cliente. Escolha outro horário.")
+                st.error(f"❌ O horário **{hora_limpa}** acabou de ser reservado por outro cliente. Escolha outro horário.")
             else:
                 try:
                     salvar_agendamento(
@@ -367,16 +511,20 @@ with tab_agendar:
                     
                     data_formatada = data_escolhida.strftime("%d/%m/%Y")
                     
-                    st.success("🎉 **Agendamento salvo com sucesso!**")
+                    st.balloons()
+                    st.success("🎉 **Agendamento Confirmado com Sucesso!**")
                     
                     st.markdown(
                         f"""
-                        ### 📅 Resumo da sua Reserva
-                        * **Cliente:** {nome_cliente}
-                        * **Data:** {data_formatada}
-                        * **Horário:** {hora_limpa}
-                        * **Serviço:** {servico_escolhido}
-                        """
+                        <div style="background-color: #1a1d28; border: 1px solid #d4af37; border-radius: 12px; padding: 20px; margin: 15px 0;">
+                            <h3 style="color: #d4af37; margin-top: 0;">📅 Resumo da Reserva</h3>
+                            <p style="color: #ffffff; font-size: 16px;"><b>👤 Cliente:</b> {nome_cliente}</p>
+                            <p style="color: #ffffff; font-size: 16px;"><b>📅 Data:</b> {data_formatada}</p>
+                            <p style="color: #ffffff; font-size: 16px;"><b>⏰ Horário:</b> {hora_limpa}</p>
+                            <p style="color: #ffffff; font-size: 16px;"><b>✂️ Serviço:</b> {servico_escolhido}</p>
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
                     )
                     
                     msg_whatsapp = (
@@ -392,21 +540,21 @@ with tab_agendar:
                         link_wa = f"https://wa.me/{telefone_dono_final}?text={msg_encoded}"
                     else:
                         link_wa = f"https://wa.me/?text={msg_encoded}"
-                        st.warning(f"⚠️ **Aviso ao Administrador:** O WhatsApp do salão **'{salao_id_clean}'** não foi encontrado no banco de dados.")
 
-                    html_botao = f"""<div style="background-color: #f0fdf4; border: 2px solid #25D366; border-radius: 12px; padding: 18px; text-align: center; margin-top: 20px; margin-bottom: 20px;">
-<p style="color: #166534; font-size: 16px; font-weight: 600; margin-bottom: 12px;">⚠️ <b>ÚLTIMO PASSO:</b> Clique no botão abaixo para enviar a confirmação direta para o WhatsApp do salão.</p>
-<a href="{link_wa}" target="_blank" style="text-decoration: none;">
-<div style="background-color: #25D366; color: #FFFFFF; padding: 14px 20px; border-radius: 10px; text-align: center; font-weight: bold; font-size: 18px; box-shadow: 0px 4px 12px rgba(37, 211, 102, 0.45); display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;">
-<svg width="26" height="26" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg">
-<path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"/>
-<path d="M12 0C5.373 0 0 5.373 0 12c0 2.119.553 4.11 1.519 5.84L0 24l6.335-1.652C8.016 23.284 9.948 23.858 12 23.858c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.802 0-3.567-.484-5.116-1.403l-.367-.218-3.799.992 1.012-3.702-.24-.38C2.536 15.542 2.02 13.808 2.02 12c0-5.503 4.477-9.98 9.98-9.98 5.503 0 9.98 4.477 9.98 9.98 0 5.503-4.477 9.982-9.98 9.982z"/>
-</svg>
-<span>Enviar Confirmação no WhatsApp</span>
-</div>
-</a>
-</div>"""
-
+                    html_botao = f"""
+                    <div style="background: linear-gradient(135deg, #064e3b 0%, #022c22 100%); border: 1px solid #10b981; border-radius: 12px; padding: 20px; text-align: center; margin-top: 20px;">
+                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">⚠️ <b>FINALIZAR:</b> Clique no botão abaixo para notificar a barbearia no WhatsApp.</p>
+                        <a href="{link_wa}" target="_blank" style="text-decoration: none;">
+                            <div style="background-color: #25D366; color: #FFFFFF; padding: 14px 20px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 16px; box-shadow: 0px 4px 15px rgba(37, 211, 102, 0.4); display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"/>
+                                    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.119.553 4.11 1.519 5.84L0 24l6.335-1.652C8.016 23.284 9.948 23.858 12 23.858c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.802 0-3.567-.484-5.116-1.403l-.367-.218-3.799.992 1.012-3.702-.24-.38C2.536 15.542 2.02 13.808 2.02 12c0-5.503 4.477-9.98 9.98-9.98 5.503 0 9.98 4.477 9.98 9.98 0 5.503-4.477 9.982-9.98 9.982z"/>
+                                </svg>
+                                <span>ENVIAR CONFIRMAÇÃO NO WHATSAPP</span>
+                            </div>
+                        </a>
+                    </div>
+                    """
                     st.markdown(html_botao, unsafe_allow_html=True)
                     
                 except Exception as e:
@@ -416,35 +564,38 @@ with tab_agendar:
 # ABA 2: CANCELAR AGENDAMENTO
 # ==========================================
 with tab_cancelar:
-    st.subheader("🔎 Localizar e Cancelar Agendamento")
-    st.write("Surgiu algum imprevisto? Digite abaixo o número de telefone/WhatsApp cadastrado para buscar e cancelar seus horários marcados.")
+    st.markdown("### 🔎 Buscar Agendamento")
+    st.write("Digite o número do seu WhatsApp cadastrado para encontrar e gerenciar seus horários.")
 
-    tel_busca = st.text_input("Digite o seu WhatsApp cadastrado (com DDD):", key="tel_cancelar")
+    tel_busca = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: 11999999999", key="tel_cancelar")
     
     if tel_busca:
         meus_agendamentos = buscar_agendamentos_cliente(salao_id_clean, tel_busca)
         
         if meus_agendamentos:
-            st.success(f"Encontramos **{len(meus_agendamentos)}** agendamento(s) ativo(s):")
+            st.success(f"Localizamos **{len(meus_agendamentos)}** agendamento(s) ativo(s):")
             
             for item in meus_agendamentos:
                 ag_id, cliente_n, servico_n, data_ag, hora_ag = item[0], item[1], item[2], item[3], item[4]
                 
-                # Formata data para dd/mm/yyyy
                 data_dt = datetime.strptime(str(data_ag), "%Y-%m-%d") if isinstance(data_ag, str) else data_ag
                 data_formatada = data_dt.strftime("%d/%m/%Y")
                 
-                with st.expander(f"📌 {data_formatada} às {hora_ag} - {servico_n}", expanded=True):
-                    st.write(f"**Cliente:** {cliente_n}")
-                    st.write(f"**Serviço:** {servico_n}")
-                    st.write(f"**Data e Hora:** {data_formatada} às {hora_ag}")
-                    
-                    if st.button(f"🗑️ Confirmar Cancelamento", key=f"btn_del_{ag_id}", type="primary"):
-                        if cancelar_agendamento_por_id(ag_id):
-                            st.toast("✅ Agendamento cancelado com sucesso!", icon="🎉")
-                            st.success("Seu horário foi cancelado e o horário já está liberado novamente.")
-                            st.rerun()
-                        else:
-                            st.error("Erro ao tentar cancelar o agendamento. Tente novamente.")
+                st.markdown(f"""
+                <div class="booking-card">
+                    <div class="booking-card-header">✂️ {servico_n}</div>
+                    <div class="booking-card-detail">👤 <b>Cliente:</b> {cliente_n}</div>
+                    <div class="booking-card-detail">📅 <b>Data:</b> {data_formatada}</div>
+                    <div class="booking-card-detail">⏰ <b>Horário:</b> {hora_ag}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button(f"🗑️ Cancelar este Horário ({data_formatada} - {hora_ag})", key=f"btn_del_{ag_id}", type="secondary"):
+                    if cancelar_agendamento_por_id(ag_id):
+                        st.toast("✅ Agendamento cancelado!", icon="🎉")
+                        st.success("Seu horário foi cancelado com sucesso e a vaga foi liberada.")
+                        st.rerun()
+                    else:
+                        st.error("Erro ao tentar cancelar o agendamento. Tente novamente.")
         else:
-            st.info("Nenhum agendamento futuro foi encontrado com esse número para este salão.")
+            st.info("Nenhum agendamento futuro foi encontrado para este número.")
