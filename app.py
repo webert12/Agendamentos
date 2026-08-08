@@ -226,17 +226,26 @@ def obter_colunas_tabela(tabela_nome):
     except Exception:
         return []
 
-def enviar_notificacao_automatica_termux(nome_cliente, data_formatada, hora_limpa, servico_escolhido, telefone_dono):
-    """Envia o alerta automático para a API rodando no Termux via túnel SSH."""
+def enviar_notificacao_automatica_termux(nome_cliente, telefone_cliente, data_formatada, hora_limpa, servico_escolhido, telefone_dono):
+    """Envia o alerta automático para a API rodando no Termux com os dados do cliente inclusos."""
     if not telefone_dono:
         return
     
-    url_api = "https://a6cdef9c9ab384.lhr.life/enviar"
+    # Formata o número do cliente para criar o link direto de conversa
+    num_cliente_limpo = re.sub(r'\D', '', str(telefone_cliente))
+    if len(num_cliente_limpo) in [10, 11]:
+        num_cliente_limpo = f"55{num_cliente_limpo}"
+
+    link_wa_cliente = f"https://wa.me/{num_cliente_limpo}" if num_cliente_limpo else "Não informado"
+
+    url_api = "https://c1b493e18cb603.lhr.life/enviar"
     payload = {
         "telefone": telefone_dono,
         "mensagem": (
             f"🔔 *NOVO AGENDAMENTO*\n\n"
             f"👤 *Cliente:* {nome_cliente}\n"
+            f"📱 *WhatsApp:* {telefone_cliente}\n"
+            f"💬 *Iniciar Conversa:* {link_wa_cliente}\n\n"
             f"📅 *Data:* {data_formatada}\n"
             f"⏰ *Horário:* {hora_limpa}\n"
             f"💈 *Serviço:* {servico_escolhido}"
@@ -542,16 +551,16 @@ with tab_agendar:
                     
                     data_formatada = data_escolhida.strftime("%d/%m/%Y")
                     
-                    # Dispara notificação automática em segundo plano para o servidor Termux do dono
+                    # Dispara notificação automática incluindo o número do cliente
                     enviar_notificacao_automatica_termux(
                         nome_cliente=nome_cliente,
+                        telefone_cliente=telefone_cliente,
                         data_formatada=data_formatada,
                         hora_limpa=hora_limpa,
                         servico_escolhido=servico_escolhido,
                         telefone_dono=telefone_dono_final
                     )
                     
-                    # Balões removidos e mantido apenas mensagens limpas
                     st.success("🎉 **Agendamento Confirmado com Sucesso!**")
                     
                     st.markdown(
@@ -559,6 +568,7 @@ with tab_agendar:
                         <div style="background-color: #1a1d28; border: 1px solid #d4af37; border-radius: 12px; padding: 20px; margin: 15px 0;">
                             <h3 style="color: #d4af37; margin-top: 0;">📅 Resumo da Reserva</h3>
                             <p style="color: #ffffff; font-size: 16px;"><b>👤 Cliente:</b> {nome_cliente}</p>
+                            <p style="color: #ffffff; font-size: 16px;"><b>📱 WhatsApp:</b> {telefone_cliente}</p>
                             <p style="color: #ffffff; font-size: 16px;"><b>📅 Data:</b> {data_formatada}</p>
                             <p style="color: #ffffff; font-size: 16px;"><b>⏰ Horário:</b> {hora_limpa}</p>
                             <p style="color: #ffffff; font-size: 16px;"><b>💈 Serviço:</b> {servico_escolhido}</p>
@@ -581,10 +591,9 @@ with tab_agendar:
                     else:
                         link_wa = f"https://wa.me/?text={msg_encoded}"
 
-                    # Botão limpo para envio manual opcional caso o cliente queira
                     html_botao = f"""
                     <div style="background: linear-gradient(135deg, #064e3b 0%, #022c22 100%); border: 1px solid #10b981; border-radius: 12px; padding: 20px; text-align: center; margin-top: 20px;">
-                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">✅ <b>Horário reservado com sucesso!</b> O barbeiro foi notificado automaticamente.</p>
+                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">✅ <b>Horário reservado com sucesso!</b> O barbeiro foi notificado automaticamente com seu contato.</p>
                         <a href="{link_wa}" target="_blank" style="text-decoration: none;">
                             <div style="background-color: #25D366; color: #FFFFFF; padding: 14px 20px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 16px; box-shadow: 0px 4px 15px rgba(37, 211, 102, 0.4); display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg">
