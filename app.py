@@ -5,6 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from sqlalchemy import create_engine, text
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA E FUSO HORÁRIO (BRASÍLIA) ---
@@ -519,7 +520,7 @@ with tab_agendar:
                     
                     data_formatada = data_escolhida.strftime("%d/%m/%Y")
                     
-                    st.balloons()
+                    # Balões removidos conforme solicitado
                     st.success("🎉 **Agendamento Confirmado com Sucesso!**")
                     
                     st.markdown(
@@ -549,9 +550,21 @@ with tab_agendar:
                     else:
                         link_wa = f"https://wa.me/?text={msg_encoded}"
 
+                    # REDIRECIONAMENTO AUTOMÁTICO - Força o navegador a abrir o link do WhatsApp na hora
+                    components.html(
+                        f"""
+                        <script>
+                            window.parent.location.href = "{link_wa}";
+                        </script>
+                        """,
+                        height=0,
+                        width=0
+                    )
+
+                    # Botão mantido como redundância/segurança caso o celular do cliente bloqueie o redirecionamento automático
                     html_botao = f"""
                     <div style="background: linear-gradient(135deg, #064e3b 0%, #022c22 100%); border: 1px solid #10b981; border-radius: 12px; padding: 20px; text-align: center; margin-top: 20px;">
-                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">⚠️ <b>FINALIZAR:</b> Clique no botão abaixo para notificar a barbearia no WhatsApp.</p>
+                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">⚠️ <b>O WhatsApp deverá abrir automaticamente!</b> Se não abrir, clique abaixo:</p>
                         <a href="{link_wa}" target="_blank" style="text-decoration: none;">
                             <div style="background-color: #25D366; color: #FFFFFF; padding: 14px 20px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 16px; box-shadow: 0px 4px 15px rgba(37, 211, 102, 0.4); display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg">
