@@ -231,7 +231,7 @@ def enviar_notificacao_automatica_termux(nome_cliente, data_formatada, hora_limp
     if not telefone_dono:
         return
     
-    url_api = "https://85c330fa619247.lhr.life/enviar"
+    url_api = "https://7c4b1cf8382760.lhr.life"
     payload = {
         "telefone": telefone_dono,
         "mensagem": (
