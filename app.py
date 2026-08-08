@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+import requests
 from sqlalchemy import create_engine, text
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA E FUSO HORÁRIO (BRASÍLIA) ---
@@ -224,6 +225,27 @@ def obter_colunas_tabela(tabela_nome):
             return [r[0].lower() for r in res]
     except Exception:
         return []
+
+def enviar_notificacao_automatica_termux(nome_cliente, data_formatada, hora_limpa, servico_escolhido, telefone_dono):
+    """Envia o alerta automático para a API rodando no Termux via túnel SSH."""
+    if not telefone_dono:
+        return
+    
+    url_api = "https://85c330fa619247.lhr.life/enviar"
+    payload = {
+        "telefone": telefone_dono,
+        "mensagem": (
+            f"🔔 *NOVO AGENDAMENTO*\n\n"
+            f"👤 *Cliente:* {nome_cliente}\n"
+            f"📅 *Data:* {data_formatada}\n"
+            f"⏰ *Horário:* {hora_limpa}\n"
+            f"💈 *Serviço:* {servico_escolhido}"
+        )
+    }
+    try:
+        requests.post(url_api, json=payload, timeout=5)
+    except Exception:
+        pass
 
 # --- 5. BUSCA INTELIGENTE E DINÂMICA DO SALÃO ---
 def buscar_dados_salao(salao_id):
@@ -520,7 +542,16 @@ with tab_agendar:
                     
                     data_formatada = data_escolhida.strftime("%d/%m/%Y")
                     
-                    # Balões removidos conforme solicitado
+                    # Dispara notificação automática em segundo plano para o servidor Termux do dono
+                    enviar_notificacao_automatica_termux(
+                        nome_cliente=nome_cliente,
+                        data_formatada=data_formatada,
+                        hora_limpa=hora_limpa,
+                        servico_escolhido=servico_escolhido,
+                        telefone_dono=telefone_dono_final
+                    )
+                    
+                    # Balões removidos e mantido apenas mensagens limpas
                     st.success("🎉 **Agendamento Confirmado com Sucesso!**")
                     
                     st.markdown(
@@ -550,28 +581,17 @@ with tab_agendar:
                     else:
                         link_wa = f"https://wa.me/?text={msg_encoded}"
 
-                    # REDIRECIONAMENTO AUTOMÁTICO - Força o navegador a abrir o link do WhatsApp na hora
-                    components.html(
-                        f"""
-                        <script>
-                            window.parent.location.href = "{link_wa}";
-                        </script>
-                        """,
-                        height=0,
-                        width=0
-                    )
-
-                    # Botão mantido como redundância/segurança caso o celular do cliente bloqueie o redirecionamento automático
+                    # Botão limpo para envio manual opcional caso o cliente queira
                     html_botao = f"""
                     <div style="background: linear-gradient(135deg, #064e3b 0%, #022c22 100%); border: 1px solid #10b981; border-radius: 12px; padding: 20px; text-align: center; margin-top: 20px;">
-                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">⚠️ <b>O WhatsApp deverá abrir automaticamente!</b> Se não abrir, clique abaixo:</p>
+                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">✅ <b>Horário reservado com sucesso!</b> O barbeiro foi notificado automaticamente.</p>
                         <a href="{link_wa}" target="_blank" style="text-decoration: none;">
                             <div style="background-color: #25D366; color: #FFFFFF; padding: 14px 20px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 16px; box-shadow: 0px 4px 15px rgba(37, 211, 102, 0.4); display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"/>
                                     <path d="M12 0C5.373 0 0 5.373 0 12c0 2.119.553 4.11 1.519 5.84L0 24l6.335-1.652C8.016 23.284 9.948 23.858 12 23.858c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.802 0-3.567-.484-5.116-1.403l-.367-.218-3.799.992 1.012-3.702-.24-.38C2.536 15.542 2.02 13.808 2.02 12c0-5.503 4.477-9.98 9.98-9.98 5.503 0 9.98 4.477 9.98 9.98 0 5.503-4.477 9.982-9.98 9.982z"/>
                                 </svg>
-                                <span>ENVIAR CONFIRMAÇÃO NO WHATSAPP</span>
+                                <span>ENVIAR NO WHATSAPP (OPCIONAL)</span>
                             </div>
                         </a>
                     </div>
