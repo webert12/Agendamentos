@@ -100,12 +100,12 @@ st.markdown("""
     }
 
     /* Inputs e Selects Customizados */
-    .stTextInput > div > div > input, .stSelectbox > div > div > div {
+    .stTextInput > div > div > input, .stSelectbox > div > div > div, .stMultiSelect > div > div {
         background-color: #1a1d28 !important;
         color: #ffffff !important;
         border: 1px solid #374151 !important;
         border-radius: 10px !important;
-        padding: 10px !important;
+        padding: 5px !important;
     }
 
     .stTextInput > div > div > input:focus, .stSelectbox > div > div > div:focus {
@@ -231,7 +231,6 @@ def enviar_notificacao_automatica_termux(nome_cliente, telefone_cliente, data_fo
     if not telefone_dono:
         return
     
-    # Formata o número do cliente para criar o link direto de conversa
     num_cliente_limpo = re.sub(r'\D', '', str(telefone_cliente))
     if len(num_cliente_limpo) in [10, 11]:
         num_cliente_limpo = f"55{num_cliente_limpo}"
@@ -248,7 +247,7 @@ def enviar_notificacao_automatica_termux(nome_cliente, telefone_cliente, data_fo
             f"💬 *Iniciar Conversa:* {link_wa_cliente}\n\n"
             f"📅 *Data:* {data_formatada}\n"
             f"⏰ *Horário:* {hora_limpa}\n"
-            f"💈 *Serviço:* {servico_escolhido}"
+            f"💈 *Serviço(s):* {servico_escolhido}"
         )
     }
     try:
@@ -258,7 +257,7 @@ def enviar_notificacao_automatica_termux(nome_cliente, telefone_cliente, data_fo
 
 # --- 5. BUSCA INTELIGENTE E DINÂMICA DO SALÃO ---
 def buscar_dados_salao(salao_id):
-    """Busca os serviços e o telefone do salão cadastrado, adaptando-se às colunas reais do banco."""
+    """Busca TODOS os serviços cadastrados no painel do salão e o telefone do dono."""
     if not salao_id:
         return {}, ""
 
@@ -308,19 +307,24 @@ def buscar_dados_salao(salao_id):
     cols_servicos = obter_colunas_tabela("servicos")
     cols_serv_id = [c for c in ["usuario_id", "usuario", "login", "username", "nome_salao", "salao_id"] if c in cols_servicos]
 
-    if cols_servicos and "nome" in cols_servicos and "preco" in cols_servicos and cols_serv_id:
-        condicoes_serv = [f"REPLACE(REPLACE(REPLACE(LOWER(TRIM(COALESCE({c}::text, ''))), '_', ''), '-', ''), ' ', '') = :busca" for c in cols_serv_id]
-        sql_serv = f"SELECT nome, preco FROM servicos WHERE {' OR '.join(condicoes_serv)} ORDER BY nome ASC"
+    if cols_servicos and "nome" in cols_servicos and "preco" in cols_servicos:
+        if cols_serv_id:
+            condicoes_serv = [f"REPLACE(REPLACE(REPLACE(LOWER(TRIM(COALESCE({c}::text, ''))), '_', ''), '-', ''), ' ', '') = :busca" for c in cols_serv_id]
+            sql_serv = f"SELECT nome, preco FROM servicos WHERE {' OR '.join(condicoes_serv)} ORDER BY nome ASC"
+        else:
+            sql_serv = "SELECT nome, preco FROM servicos ORDER BY nome ASC"
+            
         try:
             with engine.connect() as conn:
                 rows = conn.execute(text(sql_serv), {"busca": salao_busca_normalizada}).fetchall()
                 if rows:
-                    servicos = {r[0]: float(r[1]) for r in rows}
+                    servicos = {str(r[0]).strip(): float(r[1]) for r in rows}
         except Exception:
             pass
 
+    # Fallback genérico caso a tabela de serviços ainda não possua registros
     if not servicos:
-        servicos = {"Corte de Cabelo": 30.00, "Barba": 30.00, "Combo (Corte + Barba)": 50.00}
+        servicos = {"Corte de Cabelo": 30.00, "Barba": 30.00, "Combo (Corte + Barba)": 50.00, "Pezinho / Sobrancelha": 15.00}
 
     return servicos, whatsapp
 
@@ -495,21 +499,27 @@ with tab_agendar:
             opcoes_horario.append(f"🟢 {h} - (DISPONÍVEL)")
 
     st.markdown("---")
-    st.markdown("### 2. Seus Dados e Serviço")
+    st.markdown("### 2. Seus Dados e Serviço(s)")
+
+    # Exibição interativa das opções cadastradas
+    if servicos_disponiveis:
+        servicos_selecionados = st.multiselect(
+            "Escolha os Serviços Desejados (Todas as Opções do Salão):",
+            options=list(servicos_disponiveis.keys()),
+            format_func=lambda x: f"💈 {x} — R$ {servicos_disponiveis[x]:.2f}"
+        )
+        
+        # Exibe o valor total acumulado das opções escolhidas
+        total_calculado = sum([servicos_disponiveis[s] for s in servicos_selecionados])
+        if servicos_selecionados:
+            st.info(f"💵 **Total estimado:** R$ {total_calculado:.2f} ({len(servicos_selecionados)} serviço(s) selecionado(s))")
+    else:
+        st.warning("Nenhum serviço disponível no momento.")
+        servicos_selecionados = []
 
     with st.form("form_agendamento_cliente", clear_on_submit=True):
         nome_cliente = st.text_input("Seu Nome Completo:", placeholder="Ex: João Silva")
         telefone_cliente = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: 11999999999")
-        
-        if servicos_disponiveis:
-            servico_escolhido = st.selectbox(
-                "Escolha o Serviço Desejado:", 
-                options=list(servicos_disponiveis.keys()),
-                format_func=lambda x: f"💈 {x} — R$ {servicos_disponiveis[x]:.2f}"
-            )
-        else:
-            st.warning("Nenhum serviço disponível no momento.")
-            servico_escolhido = None
 
         horario_selecionado = st.selectbox(
             "Escolha o Horário Desejado:", 
@@ -522,8 +532,8 @@ with tab_agendar:
     if enviar:
         if not nome_cliente or not telefone_cliente:
             st.warning("⚠️ Por favor, preencha seu nome e WhatsApp.")
-        elif not servico_escolhido:
-            st.error("⚠️ Selecione um serviço válido.")
+        elif not servicos_selecionados:
+            st.error("⚠️ Por favor, selecione pelo menos um serviço da lista.")
         elif horario_selecionado == "-- Selecione o Horário --":
             st.warning("⚠️ Por favor, escolha um horário na lista acima.")
         elif "🔴" in horario_selecionado:
@@ -534,6 +544,7 @@ with tab_agendar:
                 st.error(f"❌ O horário **{hora_ext}** já possui uma reserva confirmada. Escolha um horário livre (🟢).")
         else:
             hora_limpa = horario_selecionado.split()[1]
+            servico_escolhido_str = ", ".join(servicos_selecionados)
             
             ocupados_agora = buscar_horarios_ocupados(salao_id_clean, data_str)
             if hora_limpa in ocupados_agora:
@@ -544,7 +555,7 @@ with tab_agendar:
                         salao_id=salao_id_clean,
                         cliente_nome=nome_cliente,
                         cliente_contato=telefone_cliente,
-                        servico_nome=servico_escolhido,
+                        servico_nome=servico_escolhido_str,
                         data_str=data_str,
                         hora=hora_limpa
                     )
@@ -557,7 +568,7 @@ with tab_agendar:
                         telefone_cliente=telefone_cliente,
                         data_formatada=data_formatada,
                         hora_limpa=hora_limpa,
-                        servico_escolhido=servico_escolhido,
+                        servico_escolhido=servico_escolhido_str,
                         telefone_dono=telefone_dono_final
                     )
                     
@@ -571,7 +582,8 @@ with tab_agendar:
                             <p style="color: #ffffff; font-size: 16px;"><b>📱 WhatsApp:</b> {telefone_cliente}</p>
                             <p style="color: #ffffff; font-size: 16px;"><b>📅 Data:</b> {data_formatada}</p>
                             <p style="color: #ffffff; font-size: 16px;"><b>⏰ Horário:</b> {hora_limpa}</p>
-                            <p style="color: #ffffff; font-size: 16px;"><b>💈 Serviço:</b> {servico_escolhido}</p>
+                            <p style="color: #ffffff; font-size: 16px;"><b>💈 Serviço(s):</b> {servico_escolhido_str}</p>
+                            <p style="color: #d4af37; font-size: 16px;"><b>💵 Valor Total:</b> R$ {sum([servicos_disponiveis[s] for s in servicos_selecionados]):.2f}</p>
                         </div>
                         """, 
                         unsafe_allow_html=True
@@ -582,7 +594,8 @@ with tab_agendar:
                         f"👤 *Cliente:* {nome_cliente}\n"
                         f"📅 *Data:* {data_formatada}\n"
                         f"⏰ *Horário:* {hora_limpa}\n"
-                        f"💈 *Serviço:* {servico_escolhido}"
+                        f"💈 *Serviço(s):* {servico_escolhido_str}\n"
+                        f"💵 *Valor Total:* R$ {sum([servicos_disponiveis[s] for s in servicos_selecionados]):.2f}"
                     )
                     msg_encoded = urllib.parse.quote(msg_whatsapp)
 
