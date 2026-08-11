@@ -238,7 +238,7 @@ def enviar_notificacao_automatica_termux(nome_cliente, telefone_cliente, data_fo
 
     link_wa_cliente = f"https://wa.me/{num_cliente_limpo}" if num_cliente_limpo else "Não informado"
 
-    url_api = "https://c1b493e18cb603.lhr.life/enviar"
+    url_api = "https://d778198417a791.lhr.life/enviar"
     payload = {
         "telefone": telefone_dono,
         "mensagem": (
