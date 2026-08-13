@@ -237,7 +237,7 @@ def enviar_notificacao_automatica_termux(nome_cliente, telefone_cliente, data_fo
 
     link_wa_cliente = f"https://wa.me/{num_cliente_limpo}" if num_cliente_limpo else "Não informado"
 
-    url_api = "https://fioecaixa.serveousercontent.com"
+    url_api = "https://fioecaixa.serveousercontent.com/enviar"
     payload = {
         "telefone": telefone_dono,
         "mensagem": (
