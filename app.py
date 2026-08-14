@@ -237,7 +237,9 @@ def enviar_notificacao_automatica_termux(nome_cliente, telefone_cliente, data_fo
 
     link_wa_cliente = f"https://wa.me/{num_cliente_limpo}" if num_cliente_limpo else "Não informado"
 
-    url_api = "https://fioecaixa.serveousercontent.com/enviar"
+    # URL atualizada com a rota do Localtunnel
+    url_api = "https://fioecaixa.loca.lt/enviar"
+    
     payload = {
         "telefone": telefone_dono,
         "mensagem": (
@@ -250,10 +252,16 @@ def enviar_notificacao_automatica_termux(nome_cliente, telefone_cliente, data_fo
             f"💈 *Serviço(s):* {servico_escolhido}"
         )
     }
+    
+    # Cabeçalho obrigatório do Localtunnel
+    headers = {
+        "Bypass-Tunnel-Reminder": "true"
+    }
+
     try:
-        requests.post(url_api, json=payload, timeout=5)
-    except Exception:
-        pass
+        requests.post(url_api, json=payload, headers=headers, timeout=10)
+    except Exception as e:
+        print(f"❌ Erro ao enviar notificação: {e}")
 
 # --- 5. BUSCA INTELIGENTE E DINÂMICA DO SALÃO ---
 def buscar_dados_salao(salao_id):
