@@ -29,12 +29,12 @@ st.markdown("""
     header {visibility: hidden;}
 
     /* Títulos e Textos Gerais */
-    h1, h2, h3, p, label {
+    h1, h2, h3, p, label, span {
         color: #ffffff !important;
     }
     
     .hero-subtitle {
-        color: #d1d5db !important; /* Cinza mais claro para leitura fácil */
+        color: #d1d5db !important;
     }
 
     /* Card do Cabeçalho */
@@ -48,20 +48,8 @@ st.markdown("""
         box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
     }
 
-    /* CORREÇÃO DOS PLACEHOLDERS (Textos de Exemplo dentro dos campos) */
-    ::placeholder {
-        color: #a1a1aa !important;
-        opacity: 1 !important;
-    }
-    input::placeholder, textarea::placeholder {
-        color: #a1a1aa !important;
-        opacity: 1 !important;
-    }
-
-    /* Inputs e Selectboxes - Fundo, Texto e Bordas */
-    .stTextInput > div > div > input, 
-    .stSelectbox [data-baseweb="select"], 
-    .stMultiSelect [data-baseweb="select"] {
+    /* --- INPUTS DE TEXTO --- */
+    .stTextInput > div > div > input {
         background-color: #1e2230 !important;
         color: #ffffff !important;
         border: 1px solid #4b5563 !important;
@@ -70,44 +58,73 @@ st.markdown("""
         font-size: 16px !important;
     }
 
-    /* Texto digitado dentro dos inputs */
-    .stTextInput input {
+    ::placeholder, input::placeholder, textarea::placeholder {
+        color: #a1a1aa !important;
+        opacity: 1 !important;
+    }
+
+    /* --- SELECTBOX E MULTISELECT (CAMPOS DE OPÇÕES) --- */
+    /* Container principal da caixa fechada */
+    div[data-baseweb="select"] > div {
+        background-color: #1e2230 !important;
+        border: 1px solid #4b5563 !important;
+        border-radius: 8px !important;
+    }
+
+    /* Texto dentro da caixa de seleção fechada */
+    div[data-baseweb="select"] * {
+        color: #ffffff !important;
+        background-color: transparent !important;
+    }
+
+    /* Tags dos itens já selecionados no Multiselect */
+    span[data-baseweb="tag"] {
+        background-color: #374151 !important;
+        border-radius: 6px !important;
+    }
+    span[data-baseweb="tag"] * {
         color: #ffffff !important;
     }
 
-    /* Menu Suspenso (Dropdown Options) */
-    div[data-baseweb="popover"] ul, 
-    div[data-baseweb="menu"], 
-    div[role="listbox"] {
+    /* --- MENUS SUSPENSOS (LISTA DE OPÇÕES ABERTA) --- */
+    /* Fundo da janela flutuante de opções */
+    div[data-baseweb="popover"],
+    div[data-baseweb="popover"] > div,
+    div[data-baseweb="menu"],
+    ul[role="listbox"] {
+        background-color: #1e2230 !important;
+        border: 1px solid #4b5563 !important;
+        border-radius: 8px !important;
+    }
+
+    /* FORÇA TEXTO BRANCO EM TODOS OS ITENS E SUB-ELEMENTOS DO MENU */
+    div[data-baseweb="popover"] li,
+    div[data-baseweb="popover"] div[role="option"],
+    div[data-baseweb="popover"] [data-baseweb="option"],
+    div[role="listbox"] *,
+    div[data-baseweb="popover"] * {
         background-color: #1e2230 !important;
         color: #ffffff !important;
     }
 
-    div[data-baseweb="option"] {
-        color: #ffffff !important;
-        background-color: #1e2230 !important;
-    }
-
-    div[data-baseweb="option"]:hover {
+    /* Efeito Dourado ao passar o mouse pelas opções do menu */
+    div[data-baseweb="popover"] li:hover,
+    div[data-baseweb="popover"] div[role="option"]:hover,
+    div[data-baseweb="popover"] [data-baseweb="option"]:hover,
+    div[data-baseweb="popover"] li:hover *,
+    div[data-baseweb="popover"] div[role="option"]:hover * {
         background-color: #2e3446 !important;
+        color: #d4af37 !important;
     }
 
-    /* Labels dos campos */
-    label {
-        font-size: 15px !important;
-        font-weight: 600 !important;
-        margin-bottom: 5px !important;
-        color: #ffffff !important;
-    }
-
-    /* CORREÇÃO DOS BOTÕES (Incluindo os de Formulário) */
+    /* --- BOTÕES --- */
     .stButton > button, 
     .stFormSubmitButton > button,
     button[data-testid="stBaseButton-secondaryFormSubmit"],
     button[data-testid="baseButton-secondaryFormSubmit"],
     button[kind="secondaryFormSubmit"] {
         background: linear-gradient(90deg, #d4af37 0%, #b38f28 100%) !important;
-        color: #000000 !important; /* Texto preto em negrito para contraste total */
+        color: #000000 !important;
         font-weight: 800 !important;
         font-size: 16px !important;
         padding: 15px !important;
@@ -116,7 +133,6 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3) !important;
     }
 
-    /* Garante que o texto interno do botão fique sempre visível */
     .stButton > button *, 
     .stFormSubmitButton > button *,
     button[data-testid="stBaseButton-secondaryFormSubmit"] * {
@@ -124,7 +140,6 @@ st.markdown("""
         font-weight: 800 !important;
     }
 
-    /* Efeito Hover do Botão */
     .stButton > button:hover, 
     .stFormSubmitButton > button:hover {
         background: linear-gradient(90deg, #f3e5ab 0%, #d4af37 100%) !important;
@@ -145,13 +160,13 @@ st.markdown("""
     .booking-card-header {
         font-size: 19px;
         font-weight: 800;
-        color: #d4af37 !important; /* Dourado para destaque */
+        color: #d4af37 !important;
         margin-bottom: 10px;
     }
 
     .booking-card-detail {
         font-size: 15px;
-        color: #e5e7eb !important; /* Cinza claro bem legível */
+        color: #e5e7eb !important;
         margin-bottom: 6px;
     }
 
