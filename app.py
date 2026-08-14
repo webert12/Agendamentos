@@ -64,20 +64,17 @@ st.markdown("""
     }
 
     /* --- SELECTBOX E MULTISELECT (CAMPOS DE OPÇÕES) --- */
-    /* Container principal da caixa fechada */
     div[data-baseweb="select"] > div {
         background-color: #1e2230 !important;
         border: 1px solid #4b5563 !important;
         border-radius: 8px !important;
     }
 
-    /* Texto dentro da caixa de seleção fechada */
     div[data-baseweb="select"] * {
         color: #ffffff !important;
         background-color: transparent !important;
     }
 
-    /* Tags dos itens já selecionados no Multiselect */
     span[data-baseweb="tag"] {
         background-color: #374151 !important;
         border-radius: 6px !important;
@@ -87,7 +84,6 @@ st.markdown("""
     }
 
     /* --- MENUS SUSPENSOS (LISTA DE OPÇÕES ABERTA) --- */
-    /* Fundo da janela flutuante de opções */
     div[data-baseweb="popover"],
     div[data-baseweb="popover"] > div,
     div[data-baseweb="menu"],
@@ -97,7 +93,6 @@ st.markdown("""
         border-radius: 8px !important;
     }
 
-    /* FORÇA TEXTO BRANCO EM TODOS OS ITENS E SUB-ELEMENTOS DO MENU */
     div[data-baseweb="popover"] li,
     div[data-baseweb="popover"] div[role="option"],
     div[data-baseweb="popover"] [data-baseweb="option"],
@@ -107,7 +102,6 @@ st.markdown("""
         color: #ffffff !important;
     }
 
-    /* Efeito Dourado ao passar o mouse pelas opções do menu */
     div[data-baseweb="popover"] li:hover,
     div[data-baseweb="popover"] div[role="option"]:hover,
     div[data-baseweb="popover"] [data-baseweb="option"]:hover,
@@ -591,8 +585,9 @@ with tab_agendar:
                     )
                     
                     data_formatada = data_escolhida.strftime("%d/%m/%Y")
+                    valor_total = sum([servicos_disponiveis[s] for s in servicos_selecionados])
                     
-                    # Dispara notificação automática incluindo o número do cliente
+                    # Dispara notificação automática em segundo plano
                     enviar_notificacao_automatica_termux(
                         nome_cliente=nome_cliente,
                         telefone_cliente=telefone_cliente,
@@ -613,19 +608,22 @@ with tab_agendar:
                             <p><b>📅 Data:</b> {data_formatada}</p>
                             <p><b>⏰ Horário:</b> {hora_limpa}</p>
                             <p><b>💈 Serviço(s):</b> {servico_escolhido_str}</p>
-                            <p style="color: #d4af37;"><b>💵 Valor Total:</b> R$ {sum([servicos_disponiveis[s] for s in servicos_selecionados]):.2f}</p>
+                            <p style="color: #d4af37;"><b>💵 Valor Total:</b> R$ {valor_total:.2f}</p>
                         </div>
                         """, 
                         unsafe_allow_html=True
                     )
                     
+                    # Mensagem completa contendo exatamente os dados do Resumo da Reserva
                     msg_whatsapp = (
                         f"Olá! Acabei de realizar um agendamento pelo site.\n\n"
+                        f"📅 *RESUMO DA RESERVA*\n"
                         f"👤 *Cliente:* {nome_cliente}\n"
+                        f"📱 *WhatsApp:* {telefone_cliente}\n"
                         f"📅 *Data:* {data_formatada}\n"
                         f"⏰ *Horário:* {hora_limpa}\n"
                         f"💈 *Serviço(s):* {servico_escolhido_str}\n"
-                        f"💵 *Valor Total:* R$ {sum([servicos_disponiveis[s] for s in servicos_selecionados]):.2f}"
+                        f"💵 *Valor Total:* R$ {valor_total:.2f}"
                     )
                     msg_encoded = urllib.parse.quote(msg_whatsapp)
 
@@ -636,10 +634,10 @@ with tab_agendar:
 
                     html_botao = f"""
                     <div style="background: linear-gradient(135deg, #064e3b 0%, #022c22 100%); border: 1px solid #10b981; border-radius: 12px; padding: 20px; text-align: center; margin-top: 20px;">
-                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">✅ <b>Horário reservado com sucesso!</b> O barbeiro foi notificado automaticamente.</p>
+                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">✅ Agendamento confirmado, aperte abaixo para notificar o barbeiro.</p>
                         <a href="{link_wa}" target="_blank" style="text-decoration: none;">
                             <div style="background-color: #25D366; color: #FFFFFF; padding: 14px 20px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 16px; box-shadow: 0px 4px 15px rgba(37, 211, 102, 0.4); display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;">
-                                <span>ENVIAR NO WHATSAPP (OPCIONAL)</span>
+                                <span>NOTIFICAR BARBEIRO NO WHATSAPP 📲</span>
                             </div>
                         </a>
                     </div>
