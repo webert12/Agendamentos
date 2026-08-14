@@ -48,14 +48,48 @@ st.markdown("""
         box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
     }
 
-    /* Inputs: Aumentei o contraste do fundo e texto */
-    .stTextInput > div > div > input, .stSelectbox > div > div > div, .stMultiSelect > div > div {
-        background-color: #252a3a !important;
+    /* CORREÇÃO DOS PLACEHOLDERS (Textos de Exemplo dentro dos campos) */
+    ::placeholder {
+        color: #a1a1aa !important;
+        opacity: 1 !important;
+    }
+    input::placeholder, textarea::placeholder {
+        color: #a1a1aa !important;
+        opacity: 1 !important;
+    }
+
+    /* Inputs e Selectboxes - Fundo, Texto e Bordas */
+    .stTextInput > div > div > input, 
+    .stSelectbox [data-baseweb="select"], 
+    .stMultiSelect [data-baseweb="select"] {
+        background-color: #1e2230 !important;
         color: #ffffff !important;
         border: 1px solid #4b5563 !important;
         border-radius: 8px !important;
         padding: 12px !important;
-        font-size: 16px !important; /* Melhor legibilidade */
+        font-size: 16px !important;
+    }
+
+    /* Texto digitado dentro dos inputs */
+    .stTextInput input {
+        color: #ffffff !important;
+    }
+
+    /* Menu Suspenso (Dropdown Options) */
+    div[data-baseweb="popover"] ul, 
+    div[data-baseweb="menu"], 
+    div[role="listbox"] {
+        background-color: #1e2230 !important;
+        color: #ffffff !important;
+    }
+
+    div[data-baseweb="option"] {
+        color: #ffffff !important;
+        background-color: #1e2230 !important;
+    }
+
+    div[data-baseweb="option"]:hover {
+        background-color: #2e3446 !important;
     }
 
     /* Labels dos campos */
@@ -63,16 +97,38 @@ st.markdown("""
         font-size: 15px !important;
         font-weight: 600 !important;
         margin-bottom: 5px !important;
+        color: #ffffff !important;
     }
 
-    /* Botões */
-    .stButton > button {
+    /* CORREÇÃO DOS BOTÕES (Incluindo os de Formulário) */
+    .stButton > button, 
+    .stFormSubmitButton > button,
+    button[data-testid="stBaseButton-secondaryFormSubmit"],
+    button[data-testid="baseButton-secondaryFormSubmit"],
+    button[kind="secondaryFormSubmit"] {
         background: linear-gradient(90deg, #d4af37 0%, #b38f28 100%) !important;
-        color: #000000 !important; /* Preto para contraste máximo no botão */
+        color: #000000 !important; /* Texto preto em negrito para contraste total */
         font-weight: 800 !important;
         font-size: 16px !important;
         padding: 15px !important;
         border-radius: 10px !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3) !important;
+    }
+
+    /* Garante que o texto interno do botão fique sempre visível */
+    .stButton > button *, 
+    .stFormSubmitButton > button *,
+    button[data-testid="stBaseButton-secondaryFormSubmit"] * {
+        color: #000000 !important;
+        font-weight: 800 !important;
+    }
+
+    /* Efeito Hover do Botão */
+    .stButton > button:hover, 
+    .stFormSubmitButton > button:hover {
+        background: linear-gradient(90deg, #f3e5ab 0%, #d4af37 100%) !important;
+        color: #000000 !important;
     }
 
     /* Cards de Agendamento */
