@@ -13,145 +13,96 @@ from sqlalchemy import create_engine, text
 st.set_page_config(page_title="Agendamento Online", page_icon="💈", layout="centered")
 TZ_BR = ZoneInfo("America/Sao_Paulo")
 
-# --- CUSTOM CSS (ESTILIZAÇÃO PREMIUM CORRIGIDA) ---
+# --- CUSTOM CSS (ESTILIZAÇÃO PREMIUM E ALTA LEGIBILIDADE) ---
 st.markdown("""
 <style>
-    /* Estilo Global e Prevenção de Quebras de Texto */
-    * {
-        word-break: keep-all !important;
-        hyphens: none !important;
-    }
-
+    /* Estilo Global */
     .stApp {
         background: linear-gradient(135deg, #0f1117 0%, #161922 100%);
-        color: #f3f4f6;
+        color: #ffffff !important;
         font-family: 'Inter', sans-serif;
     }
 
-    /* Esconde elementos padrão do Streamlit */
+    /* Esconde elementos padrão */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
-    /* Card do Cabeçalho (Hero) */
+    /* Títulos e Textos Gerais */
+    h1, h2, h3, p, label {
+        color: #ffffff !important;
+    }
+    
+    .hero-subtitle {
+        color: #d1d5db !important; /* Cinza mais claro para leitura fácil */
+    }
+
+    /* Card do Cabeçalho */
     .hero-header {
         background: linear-gradient(135deg, #1e2230 0%, #12141d 100%);
         border: 1px solid #2e3446;
         border-radius: 16px;
-        padding: 28px 15px;
+        padding: 25px;
         text-align: center;
         margin-bottom: 25px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
     }
 
-    /* Título Responsivo sem Quebra de Palavras */
-    .hero-title {
-        font-size: clamp(20px, 5vw, 30px) !important;
-        font-weight: 800;
-        color: #ffffff;
-        margin: 0;
-        letter-spacing: 0px;
-        white-space: nowrap;
-    }
-
-    .hero-subtitle {
-        color: #9ca3af;
-        font-size: 14px;
-        margin-top: 6px;
-    }
-
-    .salao-badge {
-        display: inline-block;
-        background: linear-gradient(90deg, #d4af37 0%, #f3e5ab 100%);
-        color: #12141d;
-        font-weight: 800;
-        padding: 6px 18px;
-        border-radius: 20px;
-        font-size: 13px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-top: 12px;
-    }
-
-    /* Estilização das Abas (Tabs) */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #12141d;
-        padding: 6px;
-        border-radius: 12px;
-        border: 1px solid #2e3446;
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        height: 48px;
-        border-radius: 8px;
-        color: #9ca3af;
-        font-weight: 600;
-        background-color: transparent;
-        border: none;
-        font-size: 14px;
-    }
-
-    .stTabs [aria-selected="true"] {
-        background-color: #252a3a !important;
-        color: #d4af37 !important;
-        border: 1px solid #d4af37 !important;
-        box-shadow: 0 4px 12px rgba(212, 175, 55, 0.15);
-    }
-
-    /* Inputs e Selects Customizados */
+    /* Inputs: Aumentei o contraste do fundo e texto */
     .stTextInput > div > div > input, .stSelectbox > div > div > div, .stMultiSelect > div > div {
-        background-color: #1a1d28 !important;
+        background-color: #252a3a !important;
         color: #ffffff !important;
-        border: 1px solid #374151 !important;
-        border-radius: 10px !important;
-        padding: 5px !important;
+        border: 1px solid #4b5563 !important;
+        border-radius: 8px !important;
+        padding: 12px !important;
+        font-size: 16px !important; /* Melhor legibilidade */
     }
 
-    .stTextInput > div > div > input:focus, .stSelectbox > div > div > div:focus {
-        border-color: #d4af37 !important;
-        box-shadow: 0 0 8px rgba(212, 175, 55, 0.3) !important;
+    /* Labels dos campos */
+    label {
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        margin-bottom: 5px !important;
     }
 
-    /* Botões Principais */
+    /* Botões */
     .stButton > button {
         background: linear-gradient(90deg, #d4af37 0%, #b38f28 100%) !important;
-        color: #12141d !important;
-        font-weight: 700 !important;
-        font-size: 15px !important;
-        border: none !important;
+        color: #000000 !important; /* Preto para contraste máximo no botão */
+        font-weight: 800 !important;
+        font-size: 16px !important;
+        padding: 15px !important;
         border-radius: 10px !important;
-        padding: 12px 20px !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 4px 15px rgba(212, 175, 55, 0.25) !important;
     }
 
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4) !important;
-    }
-
-    /* Card de Agendamento Encontrado */
+    /* Cards de Agendamento */
     .booking-card {
         background-color: #1a1d28;
-        border: 1px solid #2e3446;
+        border: 1px solid #374151;
         border-left: 5px solid #d4af37;
         border-radius: 12px;
-        padding: 18px;
+        padding: 20px;
         margin-bottom: 15px;
+        color: #ffffff !important;
     }
 
     .booking-card-header {
-        font-size: 18px;
-        font-weight: 700;
-        color: #ffffff;
-        margin-bottom: 8px;
+        font-size: 19px;
+        font-weight: 800;
+        color: #d4af37 !important; /* Dourado para destaque */
+        margin-bottom: 10px;
     }
 
     .booking-card-detail {
-        font-size: 14px;
-        color: #9ca3af;
-        margin-bottom: 4px;
+        font-size: 15px;
+        color: #e5e7eb !important; /* Cinza claro bem legível */
+        margin-bottom: 6px;
+    }
+
+    /* Aba Selecionada */
+    .stTabs [aria-selected="true"] {
+        color: #d4af37 !important;
+        border-bottom: 2px solid #d4af37 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -238,7 +189,7 @@ def enviar_notificacao_automatica_termux(nome_cliente, telefone_cliente, data_fo
     link_wa_cliente = f"https://wa.me/{num_cliente_limpo}" if num_cliente_limpo else "Não informado"
 
     # URL atualizada com a rota do Localtunnel
-    url_api = "https://fioecaixa.loca.lt/enviar"
+    url_api = "https://fioecaixa.serveousercontent.com/enviar"
     
     payload = {
         "telefone": telefone_dono,
@@ -471,9 +422,9 @@ telefone_dono_final = formatar_whatsapp_dono(whatsapp_banco)
 st.markdown(f"""
 <div class="hero-header">
     <div style="font-size: 36px; margin-bottom: 8px;">💈</div>
-    <h1 class="hero-title">AGENDAMENTO ONLINE</h1>
+    <h1 style="font-size: 30px; font-weight: 800; color: #ffffff !important;">AGENDAMENTO ONLINE</h1>
     <div class="hero-subtitle">Reserve seu horário de forma rápida e prática</div>
-    <div class="salao-badge">💈 {nome_salao_formatado}</div>
+    <div style="display: inline-block; background: linear-gradient(90deg, #d4af37 0%, #f3e5ab 100%); color: #000; font-weight: 800; padding: 6px 18px; border-radius: 20px; font-size: 13px; text-transform: uppercase; margin-top: 12px;">💈 {nome_salao_formatado}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -584,14 +535,14 @@ with tab_agendar:
                     
                     st.markdown(
                         f"""
-                        <div style="background-color: #1a1d28; border: 1px solid #d4af37; border-radius: 12px; padding: 20px; margin: 15px 0;">
+                        <div class="booking-card">
                             <h3 style="color: #d4af37; margin-top: 0;">📅 Resumo da Reserva</h3>
-                            <p style="color: #ffffff; font-size: 16px;"><b>👤 Cliente:</b> {nome_cliente}</p>
-                            <p style="color: #ffffff; font-size: 16px;"><b>📱 WhatsApp:</b> {telefone_cliente}</p>
-                            <p style="color: #ffffff; font-size: 16px;"><b>📅 Data:</b> {data_formatada}</p>
-                            <p style="color: #ffffff; font-size: 16px;"><b>⏰ Horário:</b> {hora_limpa}</p>
-                            <p style="color: #ffffff; font-size: 16px;"><b>💈 Serviço(s):</b> {servico_escolhido_str}</p>
-                            <p style="color: #d4af37; font-size: 16px;"><b>💵 Valor Total:</b> R$ {sum([servicos_disponiveis[s] for s in servicos_selecionados]):.2f}</p>
+                            <p><b>👤 Cliente:</b> {nome_cliente}</p>
+                            <p><b>📱 WhatsApp:</b> {telefone_cliente}</p>
+                            <p><b>📅 Data:</b> {data_formatada}</p>
+                            <p><b>⏰ Horário:</b> {hora_limpa}</p>
+                            <p><b>💈 Serviço(s):</b> {servico_escolhido_str}</p>
+                            <p style="color: #d4af37;"><b>💵 Valor Total:</b> R$ {sum([servicos_disponiveis[s] for s in servicos_selecionados]):.2f}</p>
                         </div>
                         """, 
                         unsafe_allow_html=True
@@ -614,13 +565,9 @@ with tab_agendar:
 
                     html_botao = f"""
                     <div style="background: linear-gradient(135deg, #064e3b 0%, #022c22 100%); border: 1px solid #10b981; border-radius: 12px; padding: 20px; text-align: center; margin-top: 20px;">
-                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">✅ <b>Horário reservado com sucesso!</b> O barbeiro foi notificado automaticamente com seu contato.</p>
+                        <p style="color: #a7f3d0; font-size: 15px; font-weight: 600; margin-bottom: 12px;">✅ <b>Horário reservado com sucesso!</b> O barbeiro foi notificado automaticamente.</p>
                         <a href="{link_wa}" target="_blank" style="text-decoration: none;">
                             <div style="background-color: #25D366; color: #FFFFFF; padding: 14px 20px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 16px; box-shadow: 0px 4px 15px rgba(37, 211, 102, 0.4); display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer;">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"/>
-                                    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.119.553 4.11 1.519 5.84L0 24l6.335-1.652C8.016 23.284 9.948 23.858 12 23.858c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.82c-1.802 0-3.567-.484-5.116-1.403l-.367-.218-3.799.992 1.012-3.702-.24-.38C2.536 15.542 2.02 13.808 2.02 12c0-5.503 4.477-9.98 9.98-9.98 5.503 0 9.98 4.477 9.98 9.98 0 5.503-4.477 9.982-9.98 9.982z"/>
-                                </svg>
                                 <span>ENVIAR NO WHATSAPP (OPCIONAL)</span>
                             </div>
                         </a>
